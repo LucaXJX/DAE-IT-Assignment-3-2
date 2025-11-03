@@ -1,0 +1,25 @@
+{
+  "name": "dae-it-assignment-3-1",
+  "version": "1.0.0",
+  "description": "- 姓名：XU JIAXIN\r - 學號：24829139\r - 主題編號：9\r - 主題名稱：世界各地的特色美食",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LucaXJX/DAE-IT-Assignment-3-1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1/issues"
+  },
+  "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1#readme",
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
