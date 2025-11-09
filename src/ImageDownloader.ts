@@ -20,6 +20,26 @@ export class ImageDownloader {
   }
 
   /**
+   * 從 alt_text 提取國家名稱
+   */
+  private extractCountry(altText: string): string {
+    const match = altText.match(/\[([^\]]+)\]/);
+    return match ? match[1] : "Others";
+  }
+
+  /**
+   * 確保國家目錄存在
+   */
+  private ensureCountryDir(country: string): string {
+    const countryDir = path.join(PATHS.IMAGES_RAW, country);
+    if (!fs.existsSync(countryDir)) {
+      fs.mkdirSync(countryDir, { recursive: true });
+      console.log(`📁 創建目錄: ${country}/`);
+    }
+    return countryDir;
+  }
+
+  /**
    * 下載單個圖像
    */
   async downloadImage(image: Images): Promise<boolean> {
@@ -29,16 +49,20 @@ export class ImageDownloader {
     }
 
     try {
-      // 生成檔案名稱
-      const fileName = `image_${image.id}_${Date.now()}.jpg`;
-      const filePath = path.join(PATHS.IMAGES_RAW, fileName);
+      // 提取國家分類
+      const country = this.extractCountry(image.alt_text);
+      const countryDir = this.ensureCountryDir(country);
+
+      // 生成檔案名稱（包含國家前綴）
+      const fileName = `${country}_${image.id}_${Date.now()}.jpg`;
+      const filePath = path.join(countryDir, fileName);
 
       // 下載圖像
       await this.downloadFile(image.url, filePath);
 
-      // 更新數據庫
+      // 更新數據庫（保存相對路徑）
       dbHelper.updateImage(image.id, {
-        file_name: fileName,
+        file_name: `${country}/${fileName}`,
         download_status: "downloaded",
       });
 

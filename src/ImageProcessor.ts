@@ -19,6 +19,25 @@ export class ImageProcessor {
   }
 
   /**
+   * 從 alt_text 提取國家名稱
+   */
+  private extractCountry(altText: string): string {
+    const match = altText.match(/\[([^\]]+)\]/);
+    return match ? match[1] : "Others";
+  }
+
+  /**
+   * 確保國家目錄存在
+   */
+  private ensureCountryDir(country: string): string {
+    const countryDir = path.join(PATHS.IMAGES_PROCESSED, country);
+    if (!fs.existsSync(countryDir)) {
+      fs.mkdirSync(countryDir, { recursive: true });
+    }
+    return countryDir;
+  }
+
+  /**
    * 處理單個圖像
    */
   async processImage(image: Images): Promise<boolean> {
@@ -27,9 +46,14 @@ export class ImageProcessor {
       return false;
     }
 
+    // 提取國家分類
+    const country = this.extractCountry(image.alt_text);
+    const countryDir = this.ensureCountryDir(country);
+
     const rawPath = path.join(PATHS.IMAGES_RAW, image.file_name);
-    const processedFileName = `processed_${image.file_name}`;
-    const processedPath = path.join(PATHS.IMAGES_PROCESSED, processedFileName);
+    const baseFileName = path.basename(image.file_name);
+    const processedFileName = `processed_${baseFileName}`;
+    const processedPath = path.join(countryDir, processedFileName);
 
     try {
       // 檢查原始文件是否存在
@@ -76,7 +100,7 @@ export class ImageProcessor {
           const finalMetadata = await sharp(processedPath).metadata();
           
           dbHelper.updateImage(image.id, {
-            file_name: processedFileName,
+            file_name: `${country}/${processedFileName}`,
             process_status: 'processed',
             file_size: fileSize,
             width: finalMetadata.width,
@@ -109,7 +133,7 @@ export class ImageProcessor {
           const finalMetadata = await sharp(processedPath).metadata();
           
           dbHelper.updateImage(image.id, {
-            file_name: processedFileName,
+            file_name: `${country}/${processedFileName}`,
             process_status: 'processed',
             file_size: newFileSize,
             width: finalMetadata.width,
