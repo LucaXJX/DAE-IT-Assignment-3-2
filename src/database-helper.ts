@@ -12,14 +12,15 @@ import type { Images } from "./proxy";
 export function insertImagesBatch(images: Partial<Images>[]): number {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO images 
-    (url, alt_text, file_name, download_status, process_status, file_size, width, height, error_message, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (keyword, url, alt_text, file_name, download_status, process_status, file_size, width, height, error_message, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let count = 0;
   const insert = db.transaction((images: Partial<Images>[]) => {
     for (const image of images) {
       const result = stmt.run(
+        image.keyword || null,
         image.url,
         image.alt_text || "",
         image.file_name || "",
