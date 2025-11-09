@@ -59,11 +59,11 @@ export class ImageScraper {
         const newImages = await this.page.evaluate(() => {
           const imgElements = Array.from(document.querySelectorAll('img'));
           return imgElements
-            .map((img) => ({
+            .map((img: any) => ({
               url: img.src || img.getAttribute('data-src') || '',
               alt: img.alt || '',
             }))
-            .filter((item) => {
+            .filter((item: any) => {
               // 過濾有效的圖像 URL
               return (
                 item.url &&
