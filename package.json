@@ -8,7 +8,14 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "db:setup": "auto-migrate up && erd-to-proxy",
+    "db:migrate": "auto-migrate up",
+    "db:plan": "auto-migrate plan",
+    "db:update": "auto-migrate up && erd-to-proxy",
+    "db:dev": "auto-migrate plan && auto-migrate up && erd-to-proxy",
+    "db:gen-proxy": "erd-to-proxy",
+    "db:ui": "erd-ui"
   },
   "repository": {
     "type": "git",
@@ -22,11 +29,15 @@
   },
   "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1#readme",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.0",
+    "quick-erd": "^4.29.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "playwright": "^1.56.1"
+    "better-sqlite3": "^12.4.1",
+    "playwright": "^1.56.1",
+    "sharp": "^0.34.5"
   }
 }
