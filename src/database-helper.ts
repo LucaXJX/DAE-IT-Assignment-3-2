@@ -1,28 +1,43 @@
 /**
  * 數據庫輔助函數
- * 使用 quick-erd 生成的 proxy 進行數據庫操作
+ * 直接使用 better-sqlite3 進行數據庫操作
  */
 
-import { proxy } from "./proxy";
+import { db } from "./db";
 import type { Images } from "./proxy";
 
 /**
  * 批量插入圖像數據
  */
 export function insertImagesBatch(images: Partial<Images>[]): number {
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO images 
+    (url, alt_text, file_name, download_status, process_status, file_size, width, height, error_message, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
   let count = 0;
-  for (const image of images) {
-    try {
-      proxy.images.push(image as Images);
-      count++;
-    } catch (error) {
-      // 忽略重複的 URL（unique constraint 錯誤）
-      if (!(error instanceof Error && error.message.includes("UNIQUE"))) {
-        console.error("插入失敗:", error);
-      }
+  const insert = db.transaction((images: Partial<Images>[]) => {
+    for (const image of images) {
+      const result = stmt.run(
+        image.url,
+        image.alt_text || "",
+        image.file_name || "",
+        image.download_status || "pending",
+        image.process_status || "pending",
+        image.file_size || 0,
+        image.width || 0,
+        image.height || 0,
+        image.error_message || "",
+        image.created_at || new Date().toISOString(),
+        image.updated_at || new Date().toISOString()
+      );
+      if (result.changes > 0) count++;
     }
-  }
-  return count;
+    return count;
+  });
+
+  return insert(images);
 }
 
 /**
@@ -33,67 +48,99 @@ export function getImagesByStatus(
   processStatus?: string,
   limit?: number
 ): Images[] {
-  let results = proxy.images;
+  let sql = "SELECT * FROM images WHERE 1=1";
+  const params: any[] = [];
 
-  // 過濾下載狀態
   if (downloadStatus) {
-    results = results.filter((img) => img.download_status === downloadStatus);
+    sql += " AND download_status = ?";
+    params.push(downloadStatus);
   }
 
-  // 過濾處理狀態
   if (processStatus) {
-    results = results.filter((img) => img.process_status === processStatus);
+    sql += " AND process_status = ?";
+    params.push(processStatus);
   }
 
-  // 限制數量
   if (limit) {
-    results = results.slice(0, limit);
+    sql += " LIMIT ?";
+    params.push(limit);
   }
 
-  return results;
+  return db.prepare(sql).all(...params) as Images[];
 }
 
 /**
  * 更新圖像數據
  */
 export function updateImage(id: number, updates: Partial<Images>): void {
-  const index = proxy.images.findIndex((img) => img.id === id);
-  if (index !== -1) {
-    proxy.images[index] = {
-      ...proxy.images[index],
-      ...updates,
-      updated_at: new Date().toISOString(),
-    };
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  // 構建 SET 子句
+  if (updates.file_name !== undefined) {
+    fields.push("file_name = ?");
+    values.push(updates.file_name);
   }
+  if (updates.download_status !== undefined) {
+    fields.push("download_status = ?");
+    values.push(updates.download_status);
+  }
+  if (updates.process_status !== undefined) {
+    fields.push("process_status = ?");
+    values.push(updates.process_status);
+  }
+  if (updates.file_size !== undefined) {
+    fields.push("file_size = ?");
+    values.push(updates.file_size);
+  }
+  if (updates.width !== undefined) {
+    fields.push("width = ?");
+    values.push(updates.width);
+  }
+  if (updates.height !== undefined) {
+    fields.push("height = ?");
+    values.push(updates.height);
+  }
+  if (updates.error_message !== undefined) {
+    fields.push("error_message = ?");
+    values.push(updates.error_message);
+  }
+
+  if (fields.length === 0) return;
+
+  // 添加 updated_at
+  fields.push("updated_at = ?");
+  values.push(new Date().toISOString());
+
+  // 添加 WHERE 子句的 id
+  values.push(id);
+
+  const sql = `UPDATE images SET ${fields.join(", ")} WHERE id = ?`;
+  db.prepare(sql).run(...values);
 }
 
 /**
  * 獲取統計數據
  */
 export function getStatistics() {
-  const all = proxy.images;
-
-  const downloaded = all.filter((img) => img.download_status === "downloaded");
-  const processed = all.filter((img) => img.process_status === "processed");
-  const downloadFailed = all.filter((img) => img.download_status === "failed");
-  const processFailed = all.filter((img) => img.process_status === "failed");
-
-  const fileSizes = all
-    .map((img) => img.file_size)
-    .filter((size) => size && size > 0);
-
-  const averageFileSize =
-    fileSizes.length > 0
-      ? fileSizes.reduce((a, b) => a + b, 0) / fileSizes.length
-      : 0;
+  const stats = db.prepare(`
+    SELECT 
+      COUNT(*) as totalCollected,
+      SUM(CASE WHEN download_status = 'downloaded' THEN 1 ELSE 0 END) as totalDownloaded,
+      SUM(CASE WHEN process_status = 'processed' THEN 1 ELSE 0 END) as totalProcessed,
+      SUM(CASE WHEN download_status = 'failed' THEN 1 ELSE 0 END) as downloadFailed,
+      SUM(CASE WHEN process_status = 'failed' THEN 1 ELSE 0 END) as processFailed,
+      AVG(CASE WHEN file_size > 0 THEN file_size ELSE NULL END) as averageFileSize
+    FROM images
+  `).get() as any;
 
   return {
-    totalCollected: all.length,
-    totalDownloaded: downloaded.length,
-    totalProcessed: processed.length,
-    downloadFailed: downloadFailed.length,
-    processFailed: processFailed.length,
-    averageFileSize,
+    totalCollected: stats.totalCollected || 0,
+    totalDownloaded: stats.totalDownloaded || 0,
+    totalProcessed: stats.totalProcessed || 0,
+    downloadFailed: stats.downloadFailed || 0,
+    processFailed: stats.processFailed || 0,
+    averageFileSize: stats.averageFileSize || 0,
   };
 }
 
@@ -101,5 +148,25 @@ export function getStatistics() {
  * 獲取圖像總數
  */
 export function getTotalCount(): number {
-  return proxy.images.length;
+  const result = db
+    .prepare("SELECT COUNT(*) as count FROM images")
+    .get() as { count: number };
+  return result.count;
+}
+
+/**
+ * 按國家統計圖像數量
+ */
+export function getCountryStatistics(): { country: string; count: number }[] {
+  const results = db.prepare(`
+    SELECT 
+      SUBSTR(alt_text, 2, INSTR(alt_text, ']') - 2) as country,
+      COUNT(*) as count
+    FROM images
+    WHERE alt_text LIKE '[%]%'
+    GROUP BY country
+    ORDER BY count DESC
+  `).all() as { country: string; count: number }[];
+
+  return results;
 }
