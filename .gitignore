@@ -31,3 +31,5 @@ dump.sql
 
 # Keep main database file for submission
 # db.sqlite3 will be tracked
+images/
+db.sqlite3
