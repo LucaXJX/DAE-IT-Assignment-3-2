@@ -16,3 +16,18 @@ docs/
 
 # Database (will be added for submission)
 # database/*.db
+*.tgz
+.env
+.env.*
+!.env.example
+
+# SQLite WAL files (temporary files, should not be committed)
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Database dumps
+dump.sql
+*.xz
+
+# Keep main database file for submission
+# db.sqlite3 will be tracked
