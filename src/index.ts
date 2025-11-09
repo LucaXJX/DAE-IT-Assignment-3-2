@@ -95,6 +95,13 @@ class ImageCollectionApp {
     console.log(`處理失敗數量:        ${stats.processFailed}`);
     console.log(`平均檔案大小:        ${(stats.averageFileSize / 1024).toFixed(2)} KB`);
 
+    // 顯示各國家統計
+    console.log('\n📍 各國家收集數量:');
+    const countryStats = dbHelper.getCountryStatistics();
+    countryStats.forEach((stat) => {
+      console.log(`   ${stat.country.padEnd(15)} : ${stat.count} 張`);
+    });
+
     console.log('='.repeat(60));
   }
 

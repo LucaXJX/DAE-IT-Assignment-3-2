@@ -20,21 +20,51 @@ export const PATHS = {
 /**
  * 搜索配置
  * 主題：世界各地的特色美食
+ * 按國家/地區分類收集
  */
 export const SEARCH_CONFIG: SearchConfig = {
   keywords: [
-    "world cuisine dishes",
-    "international food",
-    "traditional food around the world",
-    "famous dishes from different countries",
-    "ethnic food photography",
-    "global cuisine",
-    "street food world",
-    "regional dishes",
+    "Chinese cuisine traditional dishes", // 中國料理
+    "Japanese sushi ramen dishes", // 日本料理
+    "Italian pizza pasta dishes", // 意大利料理
+    "French cuisine traditional dishes", // 法國料理
+    "Mexican tacos traditional food", // 墨西哥料理
+    "Indian curry traditional dishes", // 印度料理
+    "Thai food traditional dishes", // 泰國料理
+    "Korean kimchi bibimbap dishes", // 韓國料理
+    "Vietnamese pho traditional food", // 越南料理
+    "Spanish paella tapas dishes", // 西班牙料理
+    "Greek traditional food dishes", // 希臘料理
+    "Turkish kebab traditional dishes", // 土耳其料理
+    "Brazilian feijoada traditional food", // 巴西料理
+    "American burger BBQ food", // 美國料理
+    "British fish chips traditional food", // 英國料理
   ],
-  targetCount: 5000, // 目標收集 5000 個 URL（考慮部分可能失敗）
-  maxScrolls: 50, // 每個關鍵字最大滾動次數
-  scrollDelay: 1000, // 滾動延遲 1 秒
+  targetCount: 4000, // 目標收集 4000 個 URL（每個國家約 270 張，考慮失敗因素）
+  maxScrolls: 50,
+  scrollDelay: 800,
+};
+
+/**
+ * 國家分類映射
+ * 從關鍵字提取國家名稱
+ */
+export const COUNTRY_KEYWORDS: { [key: string]: string } = {
+  "Chinese cuisine": "China",
+  "Japanese sushi": "Japan",
+  "Italian pizza": "Italy",
+  "French cuisine": "France",
+  "Mexican tacos": "Mexico",
+  "Indian curry": "India",
+  "Thai food": "Thailand",
+  "Korean kimchi": "Korea",
+  "Vietnamese pho": "Vietnam",
+  "Spanish paella": "Spain",
+  "Greek traditional": "Greece",
+  "Turkish kebab": "Turkey",
+  "Brazilian feijoada": "Brazil",
+  "American burger": "USA",
+  "British fish": "UK",
 };
 
 /**
@@ -75,3 +105,15 @@ export const LOG_CONFIG = {
   enableFile: true, // 啟用文件日誌
   logLevel: "info", // 日誌級別: 'debug' | 'info' | 'warn' | 'error'
 };
+
+/**
+ * 從關鍵字提取國家名稱
+ */
+export function getCountryFromKeyword(keyword: string): string {
+  for (const [key, country] of Object.entries(COUNTRY_KEYWORDS)) {
+    if (keyword.includes(key)) {
+      return country;
+    }
+  }
+  return "Others"; // 默認分類
+}
