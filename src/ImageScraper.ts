@@ -68,9 +68,15 @@ export class ImageScraper {
         await this.page.waitForTimeout(800); // 等待圖像載入
 
         // 檢查當前載入的圖像容器數量
-        const currentContainers = await this.page.locator("div[data-id]").count();
-        
-        console.log(`   🔄 滾動 ${scroll + 1}/${maxScrollAttempts}：已載入 ${currentContainers} 個圖像容器`);
+        const currentContainers = await this.page
+          .locator("div[data-id]")
+          .count();
+
+        console.log(
+          `   🔄 滾動 ${
+            scroll + 1
+          }/${maxScrollAttempts}：已載入 ${currentContainers} 個圖像容器`
+        );
 
         // 如果數量沒有增加，計數穩定次數
         if (currentContainers === previousCount) {
@@ -88,13 +94,17 @@ export class ImageScraper {
 
         // 如果已經載入足夠的圖像容器，可以停止滾動
         if (currentContainers >= minImagesNeeded) {
-          console.log(`   ✅ 已載入足夠的圖像容器（${currentContainers} >= ${minImagesNeeded}）`);
+          console.log(
+            `   ✅ 已載入足夠的圖像容器（${currentContainers} >= ${minImagesNeeded}）`
+          );
           break;
         }
 
         // 嘗試點擊「顯示更多結果」按鈕（如果有）
         try {
-          const showMoreButton = this.page.locator('input[value="顯示更多結果"], input[value="Show more results"]');
+          const showMoreButton = this.page.locator(
+            'input[value="顯示更多結果"], input[value="Show more results"]'
+          );
           if (await showMoreButton.isVisible({ timeout: 1000 })) {
             await showMoreButton.click();
             console.log(`   🔘 點擊「顯示更多結果」按鈕`);
@@ -107,7 +117,9 @@ export class ImageScraper {
 
       // 最終統計
       const imageContainers = await this.page.locator("div[data-id]").all();
-      console.log(`📸 滾動完成！共找到 ${imageContainers.length} 個圖像容器，開始提取...`);
+      console.log(
+        `📸 滾動完成！共找到 ${imageContainers.length} 個圖像容器，開始提取...`
+      );
 
       let collected = 0;
       let attempts = 0;
