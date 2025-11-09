@@ -5,6 +5,7 @@ export async function up(knex: Knex): Promise<void> {
   if (!(await knex.schema.hasTable('images'))) {
     await knex.schema.createTable('images', table => {
       table.increments('id')
+      table.text('keyword').notNullable()
       table.string('url', 2048).notNullable().unique()
       table.text('alt_text').notNullable()
       table.string('file_name', 255).notNullable()

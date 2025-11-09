@@ -33,3 +33,4 @@ dump.sql
 # db.sqlite3 will be tracked
 images/
 db.sqlite3
+*.sqlite3
