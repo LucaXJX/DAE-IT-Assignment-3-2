@@ -7,10 +7,12 @@
 import { createClient, Photo, ErrorResponse } from "pexels";
 import type { Images } from "./proxy";
 import { getCountryFromKeyword } from "./config";
+import { RateLimiter } from "./RateLimiter";
 
 export class PexelsScraper {
   private client: any;
   private apiKey: string;
+  private rateLimiter: RateLimiter;
 
   constructor(apiKey: string) {
     if (!apiKey) {
@@ -18,6 +20,10 @@ export class PexelsScraper {
     }
     this.apiKey = apiKey;
     this.client = createClient(apiKey);
+    this.rateLimiter = new RateLimiter();
+    
+    console.log('✅ Pexels API 客戶端已初始化');
+    console.log('📊 速率限制：每小時 200 次請求');
   }
 
   /**
@@ -39,14 +45,19 @@ export class PexelsScraper {
 
     try {
       while (images.length < targetCount && page <= 50) {
-        // Pexels 免費版最多 5000 張/月
+        // 使用速率限制器執行 API 請求
         console.log(`   📄 正在獲取第 ${page} 頁...`);
 
-        const response = await this.client.photos.search({
-          query: keyword,
-          per_page: perPage,
-          page: page,
-        });
+        const response = await this.rateLimiter.waitAndExecute(
+          async () => {
+            return await this.client.photos.search({
+              query: keyword,
+              per_page: perPage,
+              page: page,
+            });
+          },
+          true // 顯示進度
+        );
 
         // 檢查是否有錯誤
         if ("error" in response) {
@@ -98,12 +109,14 @@ export class PexelsScraper {
         }
 
         page++;
-        
-        // API 速率限制：每秒最多 1 次請求
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       console.log(`✅ 關鍵字 "${keyword}" 完成，共收集 ${images.length} 張圖像`);
+      
+      // 顯示當前 API 使用統計
+      const stats = this.rateLimiter.getHourlyStats();
+      console.log(`   📊 本小時 API 使用: ${stats.count}/${stats.limit} (剩餘 ${stats.remaining})`);
+      
       return images;
 
     } catch (error: any) {
@@ -138,7 +151,19 @@ export class PexelsScraper {
       }
     }
 
+    // 顯示最終 API 使用統計
+    console.log('\n');
+    this.rateLimiter.showDetailedStats();
+
     return allImages.slice(0, totalTarget);
   }
+
+  /**
+   * 獲取當前 API 使用統計
+   */
+  getApiStats() {
+    return this.rateLimiter.getHourlyStats();
+  }
 }
+
 
