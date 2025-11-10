@@ -60,7 +60,7 @@ export const SEARCH_CONFIG: SearchConfig = {
     "American burger BBQ food", // 美國料理
     "British fish chips traditional food", // 英國料理
   ],
-  targetCount: 1000, // 測試：50 張 | 完整：3500 張
+  targetCount: 3500, // 測試：50 張 | 完整：3500 張
   maxScrolls: 50, // 僅 Google 使用
   scrollDelay: 800, // 僅 Google 使用
 };
