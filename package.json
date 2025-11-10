@@ -6,6 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "ts-node src/index.ts",
+    "scrape": "ts-node src/index.ts --scrape",
+    "download": "ts-node src/index.ts --download",
+    "process": "ts-node src/index.ts --process",
+    "stats": "node check-progress.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -40,7 +44,9 @@
     "better-sqlite3": "^12.4.1",
     "better-sqlite3-proxy": "^2.11.3",
     "better-sqlite3-schema": "^3.1.9",
+    "dotenv": "^17.2.3",
     "knex": "^3.1.0",
+    "pexels": "^1.4.0",
     "playwright": "^1.56.1",
     "sharp": "^0.34.5"
   },
