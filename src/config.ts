@@ -18,6 +18,26 @@ export const PATHS = {
 };
 
 /**
+ * 圖像來源選擇
+ * 'google' - 使用 Google Images (Playwright)
+ * 'pexels' - 使用 Pexels API（推薦：更快、更穩定、高質量）
+ */
+export const IMAGE_SOURCE: "google" | "pexels" = "pexels"; // ← 在這裡切換
+
+/**
+ * Pexels API 配置
+ * 註冊網址：https://www.pexels.com/api/
+ * 免費額度：每小時 200 次請求
+ */
+import { env } from "./env";
+
+export const PEXELS_CONFIG = {
+  apiKey: env.PEXELS_API_KEY, // 從 .env 檔案讀取
+  perPage: 80, // 每頁圖像數量（最多 80）
+  rateLimitDelay: 1000, // API 速率限制延遲（毫秒）
+};
+
+/**
  * 搜索配置
  * 主題：世界各地的特色美食
  * 按國家/地區分類收集
@@ -40,9 +60,9 @@ export const SEARCH_CONFIG: SearchConfig = {
     "American burger BBQ food", // 美國料理
     "British fish chips traditional food", // 英國料理
   ],
-  targetCount: 4000, // 目標收集 4000 個 URL（每個國家約 270 張，考慮失敗因素）
-  maxScrolls: 50,
-  scrollDelay: 800,
+  targetCount: 1000, // 測試：50 張 | 完整：3500 張
+  maxScrolls: 50, // 僅 Google 使用
+  scrollDelay: 800, // 僅 Google 使用
 };
 
 /**
