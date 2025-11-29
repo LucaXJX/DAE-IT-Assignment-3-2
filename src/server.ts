@@ -14,6 +14,7 @@ import {
   getUnlabeledImagesPerCountry,
   getImagesByLabel,
   getLabeledImageIds,
+  getImagesForReview,
 } from "./image-label-helper";
 import {
   prepareTrainingDataset,
@@ -149,6 +150,50 @@ interface ImageInfo {
   url: string;
   apiUrl?: string; // 備用 API 端點
 }
+
+// 獲取需要審核的圖片列表（用於審核模式）
+app.get("/api/images/review", async (req, res) => {
+  try {
+    const { country, filterType = "ai" } = req.query;
+
+    // 獲取需要審核的圖片
+    const reviewImages = getImagesForReview(
+      country as string | undefined,
+      filterType as "ai" | "manual" | "all"
+    );
+
+    // 轉換為前端需要的格式
+    const images: ImageInfo[] = reviewImages.map((img) => {
+      // 解析 filePath 獲取 country 和 filename
+      const parts = img.filePath.split("/");
+      const filename = parts.pop() || img.filename;
+      const imgCountry = parts[0] || img.country;
+
+      return {
+        id: `${imgCountry}_${filename}`,
+        country: imgCountry || img.country,
+        filename: filename,
+        path: img.filePath,
+        url: `/images/${img.filePath}`,
+        apiUrl: `/api/image-file/${imgCountry || img.country}/${filename}`,
+      };
+    });
+
+    res.json({
+      success: true,
+      images,
+      total: images.length,
+      filterType,
+      country: country || "all",
+    });
+  } catch (error) {
+    console.error("獲取審核圖片列表失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "未知錯誤",
+    });
+  }
+});
 
 // 獲取所有圖片列表
 app.get("/api/images", async (req, res) => {

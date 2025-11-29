@@ -359,3 +359,90 @@ export function getLabeledImageIds(): Set<number> {
   return new Set(rows.map(row => row.image_id));
 }
 
+/**
+ * 獲取需要審核的圖片列表（AI 分類且未審核，或手動標註且未審核）
+ * @param country 可選的國家篩選
+ * @param filterType 篩選類型：'ai' | 'manual' | 'all'
+ */
+export function getImagesForReview(
+  country?: string,
+  filterType: 'ai' | 'manual' | 'all' = 'ai'
+): Array<{
+  id: number;
+  filePath: string;
+  country: string;
+  filename: string;
+  label: string;
+  confidence: number;
+  labelId: number;
+  isManual: boolean;
+  reviewed: boolean;
+}> {
+  // 構建 SQL 查詢
+  let query = `
+    SELECT 
+      i.id,
+      i.file_name,
+      i.keyword,
+      il.label,
+      il.confidence,
+      il.is_manual,
+      il.reviewed,
+      il.id as label_id,
+      il.created_at
+    FROM image_labels il
+    JOIN images i ON il.image_id = i.id
+    WHERE il.reviewed = 0
+  `;
+  
+  const params: any[] = [];
+  
+  // 按篩選類型添加條件
+  if (filterType === 'ai') {
+    query += ' AND il.is_manual = 0';
+  } else if (filterType === 'manual') {
+    query += ' AND il.is_manual = 1';
+  }
+  // 'all' 不添加額外條件
+  
+  // 按國家篩選（如果指定）
+  if (country && country !== 'all') {
+    query += ' AND i.keyword = ?';
+    params.push(country);
+  }
+  
+  query += ' ORDER BY i.id, il.created_at DESC';
+  
+  const stmt = db.prepare(query);
+  const rows = stmt.all(...params) as any[];
+  
+  // 使用 Map 來去重，每個圖片只保留最新的標籤
+  const imageMap = new Map<number, any>();
+  
+  rows.forEach(row => {
+    if (!imageMap.has(row.id)) {
+      // 處理 file_name 可能包含路徑的情況
+      let filePath: string;
+      if (row.file_name.includes('/') || row.file_name.includes('\\')) {
+        filePath = row.file_name;
+      } else {
+        filePath = row.keyword ? `${row.keyword}/${row.file_name}` : row.file_name;
+      }
+      
+      imageMap.set(row.id, {
+        id: row.id,
+        filePath: filePath,
+        country: row.keyword || '',
+        filename: path.basename(filePath),
+        label: row.label,
+        confidence: row.confidence || 0,
+        labelId: row.label_id,
+        isManual: row.is_manual === 1,
+        reviewed: row.reviewed === 1
+      });
+    }
+  });
+  
+  return Array.from(imageMap.values());
+}
+

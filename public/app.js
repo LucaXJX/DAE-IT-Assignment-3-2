@@ -209,14 +209,11 @@ async function filterByCountry(country) {
     filtered = state.images.filter(img => img.country === country);
   }
   
-  // 如果處於審核模式，應用審核篩選（異步）
+  // 如果處於審核模式，從服務器端獲取需要審核的圖片
   if (state.mode === 'review') {
-    // 使用異步篩選，然後更新 UI
-    filterImagesByReviewAsync(filtered).then(filteredResult => {
-      state.filteredImages = filteredResult;
-      console.log(`顯示圖片，總數:`, state.filteredImages.length);
+    // 使用 applyReviewFilter 從服務器端獲取
+    applyReviewFilter().then(() => {
       state.currentIndex = 0;
-      updateUI();
       updateStats(); // 更新統計
     });
     return; // 提前返回，等待異步完成
@@ -853,31 +850,47 @@ function setReviewFilter(filter) {
   });
 }
 
-// 應用審核篩選
+// 應用審核篩選（從服務器端獲取需要審核的圖片）
 async function applyReviewFilter() {
-  // 重新篩選圖片列表
-  let filtered = [];
-  if (state.selectedCountry === 'all') {
-    filtered = state.images;
-  } else {
-    filtered = state.images.filter(img => img.country === state.selectedCountry);
-  }
-  
-  // 使用異步版本進行篩選
-  filtered = await filterImagesByReviewAsync(filtered);
-  state.filteredImages = filtered;
-  
-  // 調整當前索引（確保不超出範圍）
-  if (state.currentIndex >= state.filteredImages.length) {
-    state.currentIndex = Math.max(0, state.filteredImages.length - 1);
-  }
-  
-  // 更新UI
-  updateUI();
-  
-  // 顯示審核標籤
-  if (state.mode === 'review') {
-    displayReviewLabels();
+  try {
+    showLoading(true);
+    
+    // 從服務器端 API 獲取需要審核的圖片
+    const country = state.selectedCountry || 'all';
+    const filterType = state.reviewFilter || 'ai';
+    
+    const response = await fetch(`${API_BASE}/api/images/review?country=${country}&filterType=${filterType}`);
+    const data = await response.json();
+    
+    if (data.success) {
+      state.filteredImages = data.images;
+      console.log(`✅ 獲取審核圖片成功，總數: ${state.filteredImages.length} (${filterType}, ${country})`);
+      
+      // 調整當前索引（確保不超出範圍）
+      if (state.currentIndex >= state.filteredImages.length) {
+        state.currentIndex = Math.max(0, state.filteredImages.length - 1);
+      }
+      
+      // 更新UI
+      updateUI();
+      
+      // 顯示審核標籤
+      if (state.mode === 'review') {
+        displayReviewLabels();
+      }
+    } else {
+      console.error('❌ 獲取審核圖片失敗:', data.error);
+      showError(data.error || '獲取審核圖片失敗');
+      state.filteredImages = [];
+      updateUI();
+    }
+  } catch (error) {
+    console.error('❌ 獲取審核圖片請求失敗:', error);
+    showError(`獲取審核圖片失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
+    state.filteredImages = [];
+    updateUI();
+  } finally {
+    showLoading(false);
   }
 }
 
