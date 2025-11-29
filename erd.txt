@@ -32,6 +32,18 @@ created_at timestamp
 updated_at timestamp
 
 
+image_labels
+------------
+id integer PK
+image_id integer FK >- images.id
+label text
+confidence float
+is_manual boolean
+reviewed boolean
+created_at timestamp
+updated_at timestamp
+
+
 # zoom: 1.000
 # view: (0, 0)
 # text-bg: #6495ed

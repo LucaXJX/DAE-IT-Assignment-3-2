@@ -6,6 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "ts-node src/index.ts",
+    "server": "ts-node src/server.ts",
+    "server:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "scrape": "ts-node src/index.ts --scrape",
     "download": "ts-node src/index.ts --download",
     "process": "ts-node src/index.ts --process",
@@ -34,6 +36,8 @@
   "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1#readme",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
     "@types/integer": "^4.0.3",
     "@types/node": "^24.10.1",
     "quick-erd": "^4.29.1",
@@ -43,20 +47,22 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
+    "@tensorflow/tfjs-converter": "^4.22.0",
     "@tensorflow/tfjs-core": "^4.22.0",
     "@tensorflow/tfjs-data": "^4.22.0",
     "@tensorflow/tfjs-layers": "^4.22.0",
-    "@tensorflow/tfjs-converter": "^4.22.0",
-    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
-    "tensorflow-helpers": "^1.5.2",
     "better-sqlite3": "^12.4.1",
     "better-sqlite3-proxy": "^2.11.3",
     "better-sqlite3-schema": "^3.1.9",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express": "^4.21.2",
     "knex": "^3.1.0",
     "pexels": "^1.4.0",
     "playwright": "^1.56.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "tensorflow-helpers": "^1.5.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
