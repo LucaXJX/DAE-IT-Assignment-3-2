@@ -2,6 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import {
+  saveImageLabel,
+  getImageLabels,
+  deleteImageLabel,
+  markLabelAsReviewed,
+  getImageIdFromPath,
+  createImageRecordIfNotExists,
+  getLabeledStats,
+  getUnlabeledImages
+} from './image-label-helper';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,7 +129,7 @@ app.get('/api/images/:country', async (req, res) => {
 app.post('/api/images/:imageId/label', async (req, res) => {
   try {
     const { imageId } = req.params;
-    const { label, isManual = true } = req.body;
+    const { label, isManual = true, confidence = 1.0 } = req.body;
 
     if (!label) {
       return res.status(400).json({
@@ -128,14 +138,42 @@ app.post('/api/images/:imageId/label', async (req, res) => {
       });
     }
 
-    // TODO: 保存到資料庫
-    // 這裡暫時只是返回成功，後續會整合資料庫
+    // 解析圖片 ID (格式: country_filename.jpg)
+    const [country, ...filenameParts] = imageId.split('_');
+    const filename = filenameParts.join('_');
+
+    // 獲取資料庫中的圖片 ID，如果不存在則創建記錄
+    let dbImageId = getImageIdFromPath(country, filename);
+
+    if (!dbImageId) {
+      // 如果資料庫中沒有這張圖片，檢查文件是否存在，如果存在則創建記錄
+      const imagePath = path.join(imagesDir, country, filename);
+      if (!fs.existsSync(imagePath)) {
+        return res.status(404).json({
+          success: false,
+          error: '圖片文件不存在'
+        });
+      }
+      
+      // 創建資料庫記錄
+      dbImageId = createImageRecordIfNotExists(country, filename);
+    }
+
+    // 保存標籤到資料庫
+    const labelId = saveImageLabel({
+      image_id: dbImageId,
+      label,
+      confidence: isManual ? 1.0 : (confidence || 0.0),
+      is_manual: isManual,
+      reviewed: isManual // 手動標註默認已審核
+    });
 
     res.json({
       success: true,
       message: '標籤已保存',
       data: {
-        imageId,
+        labelId,
+        imageId: dbImageId,
         label,
         isManual
       }
@@ -154,11 +192,38 @@ app.get('/api/images/:imageId/labels', async (req, res) => {
   try {
     const { imageId } = req.params;
 
-    // TODO: 從資料庫獲取標籤
+    // 解析圖片 ID (格式: country_filename.jpg)
+    const [country, ...filenameParts] = imageId.split('_');
+    const filename = filenameParts.join('_');
+
+    // 獲取資料庫中的圖片 ID，如果不存在則創建記錄
+    let dbImageId = getImageIdFromPath(country, filename);
+
+    if (!dbImageId) {
+      // 如果資料庫中沒有記錄，檢查文件是否存在
+      const imagePath = path.join(imagesDir, country, filename);
+      if (fs.existsSync(imagePath)) {
+        dbImageId = createImageRecordIfNotExists(country, filename);
+      } else {
+        return res.json({
+          success: true,
+          labels: []
+        });
+      }
+    }
+
+    // 從資料庫獲取標籤
+    const labels = getImageLabels(dbImageId);
 
     res.json({
       success: true,
-      labels: []
+      labels: labels.map(label => ({
+        id: label.id,
+        label: label.label,
+        confidence: label.confidence,
+        isManual: label.is_manual,
+        reviewed: label.reviewed
+      }))
     });
   } catch (error) {
     console.error('獲取標籤失敗:', error);
@@ -215,13 +280,74 @@ app.get('/api/countries', async (req, res) => {
       };
     });
 
+    // 添加「其他」選項
+    countriesWithCount.push({
+      name: '其他',
+      count: 0
+    });
+
     res.json({
       success: true,
       countries: countriesWithCount,
-      total: countries.length
+      total: countries.length + 1
     });
   } catch (error) {
     console.error('獲取國家列表失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 獲取標籤統計
+app.get('/api/stats/labels', async (req, res) => {
+  try {
+    const stats = getLabeledStats();
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('獲取統計失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 刪除標籤
+app.delete('/api/images/:imageId/labels/:labelId', async (req, res) => {
+  try {
+    const { labelId } = req.params;
+    const success = deleteImageLabel(parseInt(labelId));
+    
+    res.json({
+      success,
+      message: success ? '標籤已刪除' : '標籤不存在'
+    });
+  } catch (error) {
+    console.error('刪除標籤失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 標記標籤為已審核
+app.put('/api/images/:imageId/labels/:labelId/review', async (req, res) => {
+  try {
+    const { labelId } = req.params;
+    const success = markLabelAsReviewed(parseInt(labelId));
+    
+    res.json({
+      success,
+      message: success ? '標籤已標記為已審核' : '標籤不存在'
+    });
+  } catch (error) {
+    console.error('標記審核失敗:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '未知錯誤'
@@ -259,4 +385,17 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 服務器運行在 http://localhost:${PORT}`);
   console.log(`📁 圖片目錄: ${imagesDir}`);
+  console.log(`📁 圖片 URL 前綴: /images/`);
+  console.log(`📁 前端目錄: ${publicDir}`);
+  
+  // 測試圖片目錄是否存在
+  if (fs.existsSync(imagesDir)) {
+    const countries = fs.readdirSync(imagesDir).filter(item => {
+      const itemPath = path.join(imagesDir, item);
+      return fs.statSync(itemPath).isDirectory();
+    });
+    console.log(`✅ 找到 ${countries.length} 個國家目錄: ${countries.join(', ')}`);
+  } else {
+    console.error(`❌ 圖片目錄不存在: ${imagesDir}`);
+  }
 });

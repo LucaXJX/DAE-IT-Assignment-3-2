@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>圖片標註與訓練系統</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🍜 世界美食圖片標註與訓練系統</h1>
+      <p>為 AI 模型標註圖片，協助訓練和改進分類準確度</p>
+    </header>
+
+    <div class="main-content">
+      <!-- 側邊欄：國家篩選和統計 -->
+      <aside class="sidebar">
+        <div class="filter-section">
+          <h2>國家篩選</h2>
+          <div id="countries-list" class="countries-list">
+            <button class="country-btn active" data-country="all">
+              全部 (<span id="total-count">0</span>)
+            </button>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h2>統計資訊</h2>
+          <div class="stat-item">
+            <span class="stat-label">已標註：</span>
+            <span class="stat-value" id="labeled-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">待標註：</span>
+            <span class="stat-value" id="unlabeled-count">0</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 主內容區：圖片展示和標籤 -->
+      <main class="image-viewer">
+        <div class="toolbar">
+          <button id="prev-btn" class="btn btn-secondary">← 上一張</button>
+          <span class="image-counter">
+            <span id="current-index">0</span> / <span id="total-images">0</span>
+          </span>
+          <button id="next-btn" class="btn btn-secondary">下一張 →</button>
+          <button id="classify-btn" class="btn btn-primary">🤖 AI 分類</button>
+        </div>
+
+        <div class="image-container">
+          <div id="image-wrapper" class="image-wrapper">
+            <img id="current-image" src="" alt="當前圖片" />
+            <div class="image-overlay">
+              <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>載入中...</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="image-info">
+            <h3 id="image-filename">選擇圖片開始標註</h3>
+            <p id="image-country" class="image-country"></p>
+          </div>
+        </div>
+
+        <!-- 標籤和分類結果 -->
+        <div class="labeling-panel">
+          <div class="label-section">
+            <h3>手動標籤</h3>
+            <div class="label-input-group">
+              <select id="label-select" class="label-select">
+                <option value="">選擇標籤...</option>
+              </select>
+              <button id="save-label-btn" class="btn btn-success">保存標籤</button>
+            </div>
+            <div id="current-labels" class="current-labels"></div>
+          </div>
+
+          <div class="prediction-section">
+            <h3>AI 分類結果</h3>
+            <div id="predictions" class="predictions">
+              <p class="empty-state">點擊「AI 分類」查看預測結果</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
