@@ -436,7 +436,7 @@ async function tryLoadExistingModel(
  * 主訓練函數
  */
 async function train(continueTraining: boolean = false) {
-  const epochs = 15; // 訓練輪數：15 個 epochs
+  const epochs = 5; // 訓練輪數：15 個 epochs
   const batchSize = 32;
   const learningRate = 0.001;
   const validationSplit = 0.2;

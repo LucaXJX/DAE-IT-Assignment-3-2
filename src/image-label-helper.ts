@@ -4,6 +4,7 @@
 
 import { db } from './db';
 import type { ImageLabels } from './proxy';
+import * as path from 'path';
 
 export interface ImageLabelData {
   id?: number;
@@ -243,5 +244,118 @@ export function getUnlabeledImages(limit: number = 100): Array<{
     country: row.keyword || '',
     filename: row.file_name
   }));
+}
+
+/**
+ * 獲取每個文件夾（國家）的未標註圖片（每個文件夾最多 limit 張）
+ */
+export function getUnlabeledImagesPerCountry(limitPerCountry: number = 10): Array<{
+  id: number;
+  filePath: string;
+  country: string;
+  filename: string;
+}> {
+  // 獲取所有國家列表
+  const countriesStmt = db.prepare(`
+    SELECT DISTINCT keyword as country
+    FROM images
+    WHERE keyword IS NOT NULL AND keyword != ''
+  `);
+  const countries = countriesStmt.all() as Array<{ country: string }>;
+  
+  const allImages: Array<{
+    id: number;
+    filePath: string;
+    country: string;
+    filename: string;
+  }> = [];
+  
+  // 對每個國家，獲取未標註的圖片（限制數量）
+  for (const { country } of countries) {
+    const stmt = db.prepare(`
+      SELECT i.id, i.file_name, i.keyword
+      FROM images i
+      LEFT JOIN image_labels il ON i.id = il.image_id
+      WHERE i.keyword = ? AND il.id IS NULL
+      LIMIT ?
+    `);
+    
+    const rows = stmt.all(country, limitPerCountry) as any[];
+    rows.forEach(row => {
+      // file_name 可能已經包含完整路徑（如 "China/processed_China_100.jpg"）
+      // 或者只是文件名（如 "processed_China_100.jpg"）
+      let filePath: string;
+      if (row.file_name.includes('/') || row.file_name.includes('\\')) {
+        // 已經包含路徑
+        filePath = row.file_name;
+      } else {
+        // 只有文件名，需要拼接路徑
+        filePath = row.keyword ? `${row.keyword}/${row.file_name}` : row.file_name;
+      }
+      
+      allImages.push({
+        id: row.id,
+        filePath: filePath,
+        country: row.keyword || '',
+        filename: path.basename(filePath) // 只取文件名部分
+      });
+    });
+  }
+  
+  return allImages;
+}
+
+/**
+ * 根據標籤獲取圖片列表
+ */
+export function getImagesByLabel(label: string): Array<{
+  id: number;
+  filePath: string;
+  country: string;
+  filename: string;
+  label: string;
+  confidence: number;
+  isManual: boolean;
+  reviewed: boolean;
+}> {
+  const stmt = db.prepare(`
+    SELECT 
+      i.id,
+      i.file_name,
+      i.keyword,
+      il.label,
+      il.confidence,
+      il.is_manual,
+      il.reviewed
+    FROM image_labels il
+    JOIN images i ON il.image_id = i.id
+    WHERE il.label = ?
+    ORDER BY il.is_manual DESC, il.confidence DESC
+  `);
+
+  const rows = stmt.all(label) as any[];
+  return rows.map(row => ({
+    id: row.id,
+    filePath: row.file_name,
+    country: row.keyword || '',
+    filename: row.file_name.split('/').pop() || row.file_name,
+    label: row.label,
+    confidence: row.confidence,
+    isManual: row.is_manual === 1,
+    reviewed: row.reviewed === 1
+  }));
+}
+
+/**
+ * 獲取所有已標註的圖片 ID（用於統計和過濾）
+ */
+export function getLabeledImageIds(): Set<number> {
+  const stmt = db.prepare(`
+    SELECT DISTINCT image_id
+    FROM image_labels
+  `);
+  
+  const rows = stmt.all() as any[];
+  return new Set(rows.map(row => row.image_id));
 }
 

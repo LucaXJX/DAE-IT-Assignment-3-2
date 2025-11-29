@@ -8,11 +8,10 @@ import '@tensorflow/tfjs-backend-cpu';
 import * as path from 'path';
 import * as fs from 'fs';
 import { loadImageAsTensor } from './image-utils';
-import { loadMobileNet, IMAGE_SIZE } from './model-loader';
+import { IMAGE_SIZE } from './model-loader';
 
 const rootDir = path.resolve(process.cwd());
 const classifierModelDir = path.join(rootDir, 'saved_model/classifier_model');
-const baseModelDir = path.join(rootDir, 'saved_model/base_model');
 
 // 緩存的模型和類別名稱
 let cachedModel: tf.LayersModel | null = null;
@@ -48,20 +47,154 @@ async function loadClassifierModel(): Promise<tf.LayersModel> {
       return model;
     } catch (standardError: any) {
       // 如果標準方式失敗，使用手動載入方式
-      console.log('⚠️  標準載入方式失敗，使用手動載入方式');
+      console.log('⚠️  標準載入方式失敗，嘗試手動載入方式...');
       console.log(`   錯誤: ${standardError.message || standardError}`);
       
-      // 如果標準方式失敗，說明模型可能使用手動保存格式
-      // 拋出更友好的錯誤提示
-      throw new Error(
-        `模型載入失敗。請確保模型使用標準 TensorFlow.js 格式保存。\n` +
-        `錯誤詳情: ${standardError.message || standardError}\n` +
-        `提示: 如果使用手動保存格式，請確保所有權重文件都存在於 ${classifierModelDir} 目錄中。`
-      );
+      // 使用手動載入方式
+      return await loadModelManually();
     }
   } catch (error) {
     console.error('❌ 載入分類器模型失敗:', error);
     throw error;
+  }
+}
+
+/**
+ * 手動載入模型（從手動保存的文件）
+ */
+async function loadModelManually(): Promise<tf.LayersModel> {
+  const modelJsonPath = path.join(classifierModelDir, 'model.json');
+  const weightsManifestPath = path.join(classifierModelDir, 'weights-manifest.json');
+
+  try {
+    console.log('   開始手動載入模型結構和權重...');
+    
+    // 1. 載入模型結構
+    // 注意：model.json 可能是一個字符串化的 JSON，需要解析兩次
+    const modelJsonContent = fs.readFileSync(modelJsonPath, 'utf-8');
+    let modelJson: any;
+    try {
+      // 先解析一次
+      modelJson = JSON.parse(modelJsonContent);
+      // 如果是字符串，再解析一次
+      if (typeof modelJson === 'string') {
+        modelJson = JSON.parse(modelJson);
+      }
+    } catch (error) {
+      // 如果解析失敗，可能是格式錯誤
+      throw new Error(`無法解析模型 JSON 文件: ${error instanceof Error ? error.message : '未知錯誤'}`);
+    }
+    
+    // 2. 載入權重清單
+    const weightManifest: Array<{
+      name: string;
+      shape: (number | null)[];
+      dtype: string;
+    }> = JSON.parse(fs.readFileSync(weightsManifestPath, 'utf-8'));
+    
+    console.log(`   📦 開始載入 ${weightManifest.length} 個權重...`);
+
+    // 3. 載入所有權重
+    const weightTensors: tf.Tensor[] = [];
+    for (const item of weightManifest) {
+      const weightName = item.name.replace(/\//g, '_').replace(/:/g, '_');
+      const weightPath = path.join(classifierModelDir, `${weightName}.bin`);
+      
+      if (!fs.existsSync(weightPath)) {
+        throw new Error(`權重文件不存在: ${weightPath}`);
+      }
+
+      const buffer = fs.readFileSync(weightPath);
+      const values = new Float32Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength / Float32Array.BYTES_PER_ELEMENT
+      );
+      
+      const validShape = item.shape.filter((s): s is number => s !== null) as number[];
+      const tensor = tf.tensor(values, validShape, item.dtype as tf.DataType);
+      weightTensors.push(tensor);
+    }
+    
+    console.log('   ✅ 所有權重載入成功');
+
+    // 4. 構建完整的權重數據緩衝區
+    // TensorFlow.js 需要完整的權重數據，不能使用空緩衝區
+    console.log('   🔧 構建權重數據緩衝區...');
+    let totalSize = 0;
+    const weightOffsets: number[] = [];
+    
+    // 計算總大小和每個權重的偏移量
+    for (let i = 0; i < weightTensors.length; i++) {
+      weightOffsets.push(totalSize);
+      const shape = weightTensors[i].shape;
+      const size = shape.reduce((a, b) => a * b, 1) * 4; // Float32 = 4 bytes
+      totalSize += size;
+    }
+    
+    // 創建完整的權重數據緩衝區
+    const weightDataBuffer = new ArrayBuffer(totalSize);
+    const weightDataView = new Float32Array(weightDataBuffer);
+    
+    // 將所有權重數據複製到緩衝區
+    for (let i = 0; i < weightTensors.length; i++) {
+      const tensor = weightTensors[i];
+      const values = await tensor.array();
+      const flattened = (values as any).flat(Infinity) as number[];
+      weightDataView.set(flattened, weightOffsets[i] / 4);
+    }
+    
+    console.log('   ✅ 權重數據緩衝區構建完成');
+
+    // 5. 從 JSON 創建模型結構
+    // 方法：使用 tf.loadLayersModel 配合包含完整權重數據的 IO handler
+    let model: tf.LayersModel;
+    try {
+      // 創建權重規格
+      // WeightsManifestEntry 的 dtype 需要是特定的字面量類型，而不是通用 string
+      type DataType = "string" | "float32" | "int32" | "bool" | "complex64";
+      const weightSpecs: tf.io.WeightsManifestEntry[] = weightManifest.map(item => {
+        const entry: tf.io.WeightsManifestEntry = {
+          name: item.name,
+          shape: item.shape.filter((s): s is number => s !== null) as number[],
+          dtype: item.dtype as DataType,
+        };
+        return entry;
+      });
+      
+      // 創建一個自定義 IO handler，從內存載入模型結構和權重
+      const customIOHandler: tf.io.IOHandler = {
+        load: async () => {
+          return {
+            modelTopology: modelJson,
+            weightSpecs: weightSpecs,
+            weightData: weightDataBuffer, // 使用完整的權重數據緩衝區
+          };
+        },
+      };
+      
+      // 使用自定義 IO handler 載入模型（包含結構和權重）
+      model = await tf.loadLayersModel(customIOHandler);
+      console.log('   ✅ 使用自定義 IO handler 載入模型成功（包含結構和權重）');
+      
+      // 清理臨時權重 tensor（模型現在使用緩衝區中的數據）
+      weightTensors.forEach(t => t.dispose());
+    } catch (error: any) {
+      // 如果載入失敗，清理權重 tensor
+      weightTensors.forEach(t => t.dispose());
+      console.error('   ❌ 創建模型失敗:', error.message || error);
+      throw new Error(`無法從 JSON 創建模型結構: ${error.message || error}`);
+    }
+
+    console.log('✅ 使用手動載入方式載入分類器模型成功');
+    cachedModel = model;
+    return model;
+  } catch (error: any) {
+    console.error('❌ 手動載入模型失敗:', error);
+    throw new Error(
+      `模型載入失敗。請確保所有權重文件都存在於 ${classifierModelDir} 目錄中。\n` +
+      `錯誤詳情: ${error.message || error}`
+    );
   }
 }
 
@@ -246,4 +379,3 @@ export function getModelInfo(): {
     classNames,
   };
 }
-

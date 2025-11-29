@@ -11,46 +11,80 @@ let state = {
   labels: {}, // imageId -> labels
   mode: 'labeling', // 'labeling' 或 'review'
   reviewFilter: 'ai', // 'ai', 'manual', 'all'
-  selectedLabelId: null // 審核模式下選中的標籤ID
+  selectedLabelId: null, // 審核模式下選中的標籤ID
+  lastAIPrediction: null // 最新的 AI 預測結果（用於自動保存）
 };
 
-// DOM 元素
-const elements = {
-  countriesList: document.getElementById('countries-list'),
-  totalCount: document.getElementById('total-count'),
-  labeledCount: document.getElementById('labeled-count'),
-  unlabeledCount: document.getElementById('unlabeled-count'),
-  currentImage: document.getElementById('current-image'),
-  imageFilename: document.getElementById('image-filename'),
-  imageCountry: document.getElementById('image-country'),
-  currentIndex: document.getElementById('current-index'),
-  totalImages: document.getElementById('total-images'),
-  prevBtn: document.getElementById('prev-btn'),
-  nextBtn: document.getElementById('next-btn'),
-  classifyBtn: document.getElementById('classify-btn'),
-  labelSelect: document.getElementById('label-select'),
-  labelRadioGroup: document.getElementById('label-radio-group'),
-  saveLabelBtn: document.getElementById('save-label-btn'),
-  currentLabels: document.getElementById('current-labels'),
-  predictions: document.getElementById('predictions'),
-  loading: document.getElementById('loading'),
-  labelingPanel: document.getElementById('labeling-panel'),
-  reviewPanel: document.getElementById('review-panel'),
-  labelingModeBtn: document.getElementById('labeling-mode-btn'),
-  reviewModeBtn: document.getElementById('review-mode-btn'),
-  reviewLabels: document.getElementById('review-labels'),
-  reviewCorrectBtn: document.getElementById('review-correct-btn'),
-  reviewDeleteBtn: document.getElementById('review-delete-btn'),
-  reviewAddLabelBtn: document.getElementById('review-add-label-btn')
-};
+// DOM 元素（在函數中獲取，確保 DOM 已加載）
+let elements = {};
+
+// 初始化 DOM 元素引用
+function initElements() {
+  elements = {
+    countriesList: document.getElementById('countries-list'),
+    totalCount: document.getElementById('total-count'),
+    labeledCount: document.getElementById('labeled-count'),
+    unlabeledCount: document.getElementById('unlabeled-count'),
+    currentImage: document.getElementById('current-image'),
+    imageFilename: document.getElementById('image-filename'),
+    imageCountry: document.getElementById('image-country'),
+    currentIndex: document.getElementById('current-index'),
+    totalImages: document.getElementById('total-images'),
+    prevBtn: document.getElementById('prev-btn'),
+    nextBtn: document.getElementById('next-btn'),
+    classifyBtn: document.getElementById('classify-btn'),
+    labelSelect: document.getElementById('label-select'),
+    labelRadioGroup: document.getElementById('label-radio-group'),
+    saveLabelBtn: document.getElementById('save-label-btn'),
+    currentLabels: document.getElementById('current-labels'),
+    predictions: document.getElementById('predictions'),
+    loading: document.getElementById('loading'),
+    labelingPanel: document.getElementById('labeling-panel'),
+    reviewPanel: document.getElementById('review-panel'),
+    labelingModeBtn: document.getElementById('labeling-mode-btn'),
+    reviewModeBtn: document.getElementById('review-mode-btn'),
+    reviewLabels: document.getElementById('review-labels'),
+    reviewCorrectBtn: document.getElementById('review-correct-btn'),
+    reviewDeleteBtn: document.getElementById('review-delete-btn'),
+    reviewAddLabelBtn: document.getElementById('review-add-label-btn')
+  };
+  
+  // 檢查關鍵元素是否存在
+  if (!elements.currentImage) {
+    console.error('❌ 無法找到 current-image 元素');
+  }
+  if (!elements.labelingModeBtn) {
+    console.error('❌ 無法找到 labeling-mode-btn 元素');
+  }
+  if (!elements.reviewModeBtn) {
+    console.error('❌ 無法找到 review-mode-btn 元素');
+  }
+}
 
 // 初始化
 async function init() {
-  await loadCountries();
-  await loadImages();
-  setupEventListeners();
-  await updateStats(); // 載入統計數據
-  updateUI();
+  console.log('🚀 開始初始化應用...');
+  
+  // 初始化 DOM 元素引用
+  initElements();
+  
+  // 檢查必要的元素
+  if (!elements.currentImage || !elements.labelingModeBtn || !elements.reviewModeBtn) {
+    console.error('❌ 關鍵 DOM 元素缺失，請檢查 HTML 結構');
+    return;
+  }
+  
+  try {
+    await loadCountries();
+    await loadImages();
+    setupEventListeners();
+    await updateStats(); // 載入統計數據
+    updateUI();
+    console.log('✅ 應用初始化完成');
+  } catch (error) {
+    console.error('❌ 初始化失敗:', error);
+    showError('應用初始化失敗: ' + (error.message || error));
+  }
 }
 
 // 載入國家列表
@@ -133,7 +167,7 @@ async function loadImages() {
 }
 
 // 按國家篩選
-function filterByCountry(country) {
+async function filterByCountry(country) {
   console.log('篩選國家:', country);
   state.selectedCountry = country;
   
@@ -143,6 +177,30 @@ function filterByCountry(country) {
     btn.classList.toggle('active', btnCountry === country);
   });
   
+  // 如果選擇「其他」，需要從 API 重新載入
+  if (country === '其他') {
+    try {
+      showLoading(true);
+      const response = await fetch(`${API_BASE}/api/images?label=其他`);
+      const data = await response.json();
+      
+      if (data.success) {
+        state.filteredImages = data.images;
+        console.log(`顯示「其他」標籤的圖片，總數:`, state.filteredImages.length);
+        
+        state.currentIndex = 0;
+        updateUI();
+      }
+    } catch (error) {
+      console.error('載入「其他」標籤圖片失敗:', error);
+      showError('載入圖片失敗');
+      state.filteredImages = [];
+    } finally {
+      showLoading(false);
+    }
+    return;
+  }
+  
   // 篩選圖片
   let filtered = [];
   if (country === 'all') {
@@ -151,9 +209,18 @@ function filterByCountry(country) {
     filtered = state.images.filter(img => img.country === country);
   }
   
-  // 如果處於審核模式，應用審核篩選
-  // 注意：審核篩選是同步的，使用已載入的標籤數據
-  // 如果需要完整篩選，應使用 applyReviewFilter()
+  // 如果處於審核模式，應用審核篩選（異步）
+  if (state.mode === 'review') {
+    // 使用異步篩選，然後更新 UI
+    filterImagesByReviewAsync(filtered).then(filteredResult => {
+      state.filteredImages = filteredResult;
+      console.log(`顯示圖片，總數:`, state.filteredImages.length);
+      state.currentIndex = 0;
+      updateUI();
+      updateStats(); // 更新統計
+    });
+    return; // 提前返回，等待異步完成
+  }
   
   state.filteredImages = filtered;
   console.log(`顯示圖片，總數:`, state.filteredImages.length);
@@ -162,7 +229,7 @@ function filterByCountry(country) {
   updateUI();
 }
 
-// 根據審核條件篩選圖片
+// 根據審核條件篩選圖片（同步版本，只使用已載入的標籤）
 function filterImagesByReview(images) {
   if (state.reviewFilter === 'all') {
     return images;
@@ -186,6 +253,18 @@ function filterImagesByReview(images) {
       filtered.push(img);
     }
   }
+  
+  return filtered;
+}
+
+// 異步載入標籤並篩選圖片
+async function filterImagesByReviewAsync(images) {
+  if (state.reviewFilter === 'all') {
+    return images;
+  }
+  
+  // 先使用已載入的標籤進行篩選
+  let filtered = filterImagesByReview(images);
   
   // 如果當前圖片列表為空，嘗試載入一些標籤
   if (filtered.length === 0 && images.length > 0) {
@@ -225,48 +304,80 @@ function updateUI() {
   const currentImage = state.filteredImages[state.currentIndex];
   
   if (!currentImage) {
-    elements.currentImage.src = '';
-    elements.imageFilename.textContent = '沒有圖片';
-    elements.imageCountry.textContent = '';
-    elements.currentIndex.textContent = '0';
-    elements.totalImages.textContent = '0';
+    if (elements.currentImage) elements.currentImage.src = '';
+    if (elements.imageFilename) elements.imageFilename.textContent = '沒有圖片';
+    if (elements.imageCountry) elements.imageCountry.textContent = '';
+    if (elements.currentIndex) elements.currentIndex.textContent = '0';
+    if (elements.totalImages) elements.totalImages.textContent = '0';
     return;
   }
   
-  // 更新圖片（添加錯誤處理）
-  elements.currentImage.onerror = function() {
-    console.error('❌ 圖片加載失敗:', currentImage.url);
-    console.error('圖片信息:', {
-      id: currentImage.id,
-      country: currentImage.country,
-      filename: currentImage.filename,
-      url: currentImage.url
-    });
-    // 保持灰色占位符，顯示錯誤信息
-    showError(`圖片加載失敗: ${currentImage.filename}`);
-  };
-  
-  elements.currentImage.onload = function() {
-    console.log('✅ 圖片加載成功:', currentImage.url);
-    // 確保加載完成後隱藏 overlay
-    showLoading(false);
-  };
-  
-  // 設置圖片源
-  console.log('🔄 加載圖片:', currentImage.url);
-  // 圖片開始加載時顯示 loading（可選）
-  // showLoading(true);
-  elements.currentImage.src = currentImage.url;
-  elements.imageFilename.textContent = currentImage.filename;
-  elements.imageCountry.textContent = `國家: ${currentImage.country}`;
+  // 更新圖片（添加錯誤處理和備用方案）
+  if (elements.currentImage) {
+    // 標記是否已經嘗試過備用方案
+    let hasTriedFallback = false;
+    
+    // 設置錯誤處理器
+    elements.currentImage.onerror = function() {
+      const currentSrc = this.src;
+      console.error('❌ 圖片加載失敗:', currentSrc);
+      
+      // 如果還沒有嘗試過備用方案，嘗試使用備用 API 端點
+      if (!hasTriedFallback && !currentSrc.includes('/api/image-file/')) {
+        hasTriedFallback = true;
+        console.log('⚠️  靜態文件服務失敗，嘗試使用備用 API 端點...');
+        const fallbackUrl = currentImage.apiUrl || `/api/image-file/${currentImage.country}/${currentImage.filename}`;
+        console.log('🔄 使用備用 URL:', fallbackUrl);
+        this.src = fallbackUrl;
+        return; // 不顯示錯誤，等待備用方案加載
+      }
+      
+      // 如果備用方案也失敗了，顯示錯誤
+      console.error('圖片信息:', {
+        id: currentImage.id,
+        country: currentImage.country,
+        filename: currentImage.filename,
+        url: currentImage.url,
+        triedFallback: hasTriedFallback
+      });
+      showError(`圖片加載失敗: ${currentImage.filename}`);
+    };
+    
+    elements.currentImage.onload = function() {
+      console.log('✅ 圖片加載成功:', this.src);
+      hasTriedFallback = false; // 重置標記
+      showLoading(false);
+    };
+    
+    // 設置圖片源（優先使用靜態文件服務）
+    // 確保 URL 正確構建
+    let imageUrl = currentImage.url;
+    if (!imageUrl || imageUrl === '/' || imageUrl.startsWith('http://localhost:3000/')) {
+      // 如果 URL 無效，構建正確的 URL
+      if (currentImage.country && currentImage.filename) {
+        imageUrl = `/images/${currentImage.country}/${currentImage.filename}`;
+      } else if (currentImage.path) {
+        imageUrl = `/images/${currentImage.path}`;
+      } else {
+        console.error('❌ 無法構建圖片 URL:', currentImage);
+        imageUrl = currentImage.apiUrl || `/api/image-file/${currentImage.country}/${currentImage.filename}`;
+      }
+    }
+    console.log('🔄 加載圖片:', imageUrl);
+    elements.currentImage.src = imageUrl;
+  } else {
+    console.error('❌ currentImage 元素不存在');
+  }
+  if (elements.imageFilename) elements.imageFilename.textContent = currentImage.filename;
+  if (elements.imageCountry) elements.imageCountry.textContent = `國家: ${currentImage.country}`;
   
   // 更新計數器
-  elements.currentIndex.textContent = state.currentIndex + 1;
-  elements.totalImages.textContent = state.filteredImages.length;
+  if (elements.currentIndex) elements.currentIndex.textContent = state.currentIndex + 1;
+  if (elements.totalImages) elements.totalImages.textContent = state.filteredImages.length;
   
   // 更新按鈕狀態
-  elements.prevBtn.disabled = state.currentIndex === 0;
-  elements.nextBtn.disabled = state.currentIndex === state.filteredImages.length - 1;
+  if (elements.prevBtn) elements.prevBtn.disabled = state.currentIndex === 0;
+  if (elements.nextBtn) elements.nextBtn.disabled = state.currentIndex === state.filteredImages.length - 1;
   
   // 載入當前圖片的標籤
   loadCurrentImageLabels();
@@ -300,6 +411,8 @@ async function loadCurrentImageLabels() {
 
 // 顯示標籤
 function displayLabels(labels) {
+  if (!elements.currentLabels) return;
+  
   elements.currentLabels.innerHTML = '';
   
   if (!labels || labels.length === 0) {
@@ -319,16 +432,27 @@ function displayLabels(labels) {
 }
 
 // 保存標籤
-async function saveLabel() {
+async function saveLabel(labelToSave = null) {
   const currentImage = state.filteredImages[state.currentIndex];
-  const selectedRadio = document.querySelector('input[name="label"]:checked');
   
-  if (!currentImage || !selectedRadio) {
-    alert('請選擇標籤');
+  if (!currentImage) {
+    console.error('❌ 沒有當前圖片');
+    alert('請先選擇一張圖片');
     return;
   }
   
-  const label = selectedRadio.value;
+  // 如果沒有提供標籤，從選中的 radio button 獲取
+  let label = labelToSave;
+  if (!label) {
+    const selectedRadio = document.querySelector('input[name="label"]:checked');
+    if (!selectedRadio) {
+      alert('請選擇標籤');
+      return;
+    }
+    label = selectedRadio.value;
+  }
+  
+  console.log(`💾 開始保存標籤: ${label} 到圖片 ${currentImage.id}`);
   
   try {
     showLoading(true);
@@ -339,13 +463,21 @@ async function saveLabel() {
       },
       body: JSON.stringify({
         label: label,
-        isManual: true
+        isManual: !labelToSave, // 如果通過參數傳入，視為 AI 推薦
+        confidence: labelToSave ? state.lastAIPrediction?.confidence : 1.0
       })
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: '未知錯誤' }));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
     
     const data = await response.json();
     
     if (data.success) {
+      console.log('✅ 標籤保存成功:', data);
+      
       // 重新載入標籤
       await loadCurrentImageLabels();
       
@@ -353,48 +485,89 @@ async function saveLabel() {
       await updateStats();
       
       // 清空選擇
-      selectedRadio.checked = false;
+      if (!labelToSave) {
+        const selectedRadio = document.querySelector('input[name="label"]:checked');
+        if (selectedRadio) {
+          selectedRadio.checked = false;
+        }
+      }
       
       showSuccess('標籤已保存');
     } else {
+      console.error('❌ 保存失敗:', data.error);
       showError(data.error || '保存失敗');
     }
   } catch (error) {
-    console.error('保存標籤失敗:', error);
-    showError('保存標籤失敗');
+    console.error('❌ 保存標籤失敗:', error);
+    showError(`保存標籤失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
   } finally {
     showLoading(false);
   }
 }
 
-// AI 分類
+// 批量自動分類（每個文件夾 10 張圖片）
 async function classifyImage() {
-  const currentImage = state.filteredImages[state.currentIndex];
-  if (!currentImage) return;
+  console.log('🚀 開始批量自動分類（每個文件夾 10 張圖片）...');
   
   try {
     showLoading(true);
-    const response = await fetch(`${API_BASE}/api/images/${currentImage.id}/classify`, {
-      method: 'POST'
+    
+    // 檢查分類按鈕是否可用（避免重複點擊）
+    if (elements.classifyBtn) {
+      elements.classifyBtn.disabled = true;
+      elements.classifyBtn.textContent = '🔄 批量分類中...';
+    }
+    
+    // 調用批量分類 API（每個文件夾最多 10 張）
+    const response = await fetch(`${API_BASE}/api/images/batch-classify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        limitPerCountry: 10, // 每個文件夾最多 10 張
+        topK: 1,
+        batchSize: 8,
+        saveResults: true // 自動保存結果
+      })
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: '未知錯誤' }));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
     
     const data = await response.json();
     
     if (data.success) {
-      displayPredictions(data.predictions);
+      console.log('✅ 批量自動分類已開始:', data);
+      showSuccess(`批量自動分類已開始！將在每個文件夾分類最多 10 張圖片，共 ${data.total} 張。請查看服務器日誌獲取進度。完成後可在「審核模式」中檢查結果。`);
+      
+      // 更新統計
+      setTimeout(async () => {
+        await updateStats();
+      }, 2000);
     } else {
-      showError(data.error || '分類失敗');
+      console.error('❌ 批量分類失敗:', data.error);
+      showError(data.error || '批量分類失敗');
     }
   } catch (error) {
-    console.error('分類失敗:', error);
-    showError('分類失敗');
+    console.error('❌ 批量分類請求失敗:', error);
+    showError(`批量分類失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
   } finally {
     showLoading(false);
+    // 恢復按鈕狀態
+    if (elements.classifyBtn) {
+      elements.classifyBtn.disabled = false;
+      elements.classifyBtn.textContent = '🚀 批量自動分類（每個文件夾 10 張）';
+    }
   }
 }
 
 // 顯示預測結果
 function displayPredictions(predictions) {
+  if (!elements.predictions) return;
+  
   elements.predictions.innerHTML = '';
   
   if (!predictions || predictions.length === 0) {
@@ -402,18 +575,25 @@ function displayPredictions(predictions) {
     return;
   }
   
+  // 保存預測結果到 state（用於自動保存）
+  state.lastAIPrediction = predictions[0];
+  
   // 按置信度排序
   predictions.sort((a, b) => b.confidence - a.confidence);
   
-  predictions.forEach(pred => {
+  // 獲取最高置信度的預測
+  const topPrediction = predictions[0];
+  
+  predictions.forEach((pred, index) => {
     const item = document.createElement('div');
     item.className = 'prediction-item';
     
     const confidencePercent = (pred.confidence * 100).toFixed(1);
+    const isTop = index === 0;
     
     item.innerHTML = `
       <div style="flex: 1;">
-        <div class="prediction-label">${pred.label}</div>
+        <div class="prediction-label">${pred.label} ${isTop ? '⭐' : ''}</div>
         <div class="confidence-bar">
           <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
         </div>
@@ -423,76 +603,153 @@ function displayPredictions(predictions) {
     
     elements.predictions.appendChild(item);
   });
+  
+  // 添加「使用 AI 推薦」按鈕
+  const useAIButton = document.createElement('button');
+  useAIButton.className = 'btn btn-primary';
+  useAIButton.style.width = '100%';
+  useAIButton.style.marginTop = '10px';
+  useAIButton.textContent = `✅ 使用 AI 推薦: ${topPrediction.label} (${(topPrediction.confidence * 100).toFixed(1)}%)`;
+  useAIButton.addEventListener('click', async () => {
+    console.log(`🤖 使用 AI 推薦標籤: ${topPrediction.label}`);
+    await saveLabel(topPrediction.label);
+  });
+  
+  elements.predictions.appendChild(useAIButton);
+  
+  // 自動選中對應的 radio button（如果存在）
+  const matchingRadio = document.querySelector(`input[name="label"][value="${topPrediction.label}"]`);
+  if (matchingRadio) {
+    matchingRadio.checked = true;
+    console.log(`✅ 自動選中標籤: ${topPrediction.label}`);
+  }
 }
 
 // 清空預測結果
 function clearPredictions() {
-  elements.predictions.innerHTML = '<p class="empty-state">點擊「AI 分類」查看預測結果</p>';
+  if (elements.predictions) {
+    elements.predictions.innerHTML = '<p class="empty-state">點擊「AI 分類」查看預測結果</p>';
+  }
 }
 
 // 更新統計
 async function updateStats() {
   try {
-    // 從 API 獲取真實統計數據
+    // 如果是審核模式，顯示當前篩選後的圖片數量
+    if (state.mode === 'review') {
+      if (elements.totalCount) {
+        elements.totalCount.textContent = state.filteredImages.length;
+      }
+      // 計算當前篩選後的已標註和未標註數量
+      let labeledInFiltered = 0;
+      for (const img of state.filteredImages) {
+        if (state.labels[img.id] && state.labels[img.id].length > 0) {
+          labeledInFiltered++;
+        }
+      }
+      if (elements.labeledCount) {
+        elements.labeledCount.textContent = labeledInFiltered;
+      }
+      if (elements.unlabeledCount) {
+        elements.unlabeledCount.textContent = Math.max(0, state.filteredImages.length - labeledInFiltered);
+      }
+      return; // 審核模式使用本地統計，不需要從 API 獲取
+    }
+    
+    // 標註模式：從 API 獲取真實統計數據
     const response = await fetch(`${API_BASE}/api/stats/labels`);
     const data = await response.json();
     
     if (data.success) {
       const stats = data.stats;
-      elements.labeledCount.textContent = stats.totalLabeled || 0;
-      
-      // 計算未標註數量 = 總圖片數 - 已標註數
-      const totalImages = state.images.length;
-      const unlabeled = totalImages - (stats.totalLabeled || 0);
-      elements.unlabeledCount.textContent = unlabeled;
+      if (elements.labeledCount) {
+        elements.labeledCount.textContent = stats.totalLabeled || 0;
+      }
+      if (elements.unlabeledCount) {
+        // 使用 API 返回的未標註數量
+        elements.unlabeledCount.textContent = stats.totalUnlabeled || 0;
+      }
+      if (elements.totalCount) {
+        elements.totalCount.textContent = stats.totalImages || state.images.length;
+      }
     }
   } catch (error) {
     console.error('獲取統計失敗:', error);
     // 如果 API 失敗，使用本地計算（作為備用）
     const labeled = Object.keys(state.labels).length;
-    const total = state.images.length;
-    elements.labeledCount.textContent = labeled;
-    elements.unlabeledCount.textContent = total - labeled;
+    const total = state.mode === 'review' ? state.filteredImages.length : state.images.length;
+    if (elements.labeledCount) elements.labeledCount.textContent = labeled;
+    if (elements.unlabeledCount) elements.unlabeledCount.textContent = Math.max(0, total - labeled);
+    if (elements.totalCount) elements.totalCount.textContent = total;
   }
 }
 
 // 事件監聽器設置
 function setupEventListeners() {
+  console.log('🔧 設置事件監聽器...');
+  
   // 為「全部」按鈕添加點擊事件
   const allBtn = document.querySelector('.country-btn[data-country="all"]');
   if (allBtn) {
-    allBtn.addEventListener('click', () => filterByCountry('all'));
+    allBtn.addEventListener('click', () => {
+      console.log('點擊全部按鈕');
+      filterByCountry('all');
+    });
   }
   
-  elements.prevBtn.addEventListener('click', () => {
-    if (state.currentIndex > 0) {
-      state.currentIndex--;
-      updateUI();
-    }
-  });
+  // 基本導航按鈕
+  if (elements.prevBtn) {
+    elements.prevBtn.addEventListener('click', () => {
+      if (state.currentIndex > 0) {
+        state.currentIndex--;
+        updateUI();
+      }
+    });
+  }
   
-  elements.nextBtn.addEventListener('click', () => {
-    if (state.currentIndex < state.filteredImages.length - 1) {
-      state.currentIndex++;
-      updateUI();
-    }
-  });
+  if (elements.nextBtn) {
+    elements.nextBtn.addEventListener('click', () => {
+      if (state.currentIndex < state.filteredImages.length - 1) {
+        state.currentIndex++;
+        updateUI();
+      }
+    });
+  }
   
-  elements.saveLabelBtn.addEventListener('click', saveLabel);
-  elements.classifyBtn.addEventListener('click', classifyImage);
+  // 標籤和分類按鈕
+  if (elements.saveLabelBtn) {
+    elements.saveLabelBtn.addEventListener('click', saveLabel);
+  }
+  if (elements.classifyBtn) {
+    elements.classifyBtn.addEventListener('click', classifyImage);
+  }
   
-  // 模式切換
+  // 模式切換按鈕
   if (elements.labelingModeBtn) {
-    elements.labelingModeBtn.addEventListener('click', () => switchMode('labeling'));
+    console.log('✅ 綁定標註模式按鈕');
+    elements.labelingModeBtn.addEventListener('click', () => {
+      console.log('📝 切換到標註模式');
+      switchMode('labeling');
+    });
+  } else {
+    console.error('❌ labelingModeBtn 不存在');
   }
+  
   if (elements.reviewModeBtn) {
-    elements.reviewModeBtn.addEventListener('click', () => switchMode('review'));
+    console.log('✅ 綁定審核模式按鈕');
+    elements.reviewModeBtn.addEventListener('click', () => {
+      console.log('✅ 切換到審核模式');
+      switchMode('review');
+    });
+  } else {
+    console.error('❌ reviewModeBtn 不存在');
   }
   
   // 審核篩選按鈕
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const filter = e.target.dataset.filter;
+      console.log('🔍 設置審核篩選:', filter);
       setReviewFilter(filter);
     });
   });
@@ -513,12 +770,14 @@ function setupEventListeners() {
   
   // 鍵盤快捷鍵
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') {
+    if (e.key === 'ArrowLeft' && elements.prevBtn) {
       elements.prevBtn.click();
-    } else if (e.key === 'ArrowRight') {
+    } else if (e.key === 'ArrowRight' && elements.nextBtn) {
       elements.nextBtn.click();
     }
   });
+  
+  console.log('✅ 事件監聽器設置完成');
 }
 
 // 工具函數
@@ -567,8 +826,12 @@ function switchMode(mode) {
   
   // 根據模式更新UI
   if (mode === 'review') {
-    displayReviewLabels();
-    applyReviewFilter();
+    // 異步應用篩選，然後顯示標籤
+    applyReviewFilter().then(() => {
+      displayReviewLabels();
+      // 更新統計（審核模式下的分類數量）
+      updateStats();
+    });
   } else {
     updateUI();
   }
@@ -584,7 +847,10 @@ function setReviewFilter(filter) {
   });
   
   // 應用篩選
-  applyReviewFilter();
+  applyReviewFilter().then(() => {
+    // 更新統計（顯示篩選後的數量）
+    updateStats();
+  });
 }
 
 // 應用審核篩選
@@ -597,7 +863,8 @@ async function applyReviewFilter() {
     filtered = state.images.filter(img => img.country === state.selectedCountry);
   }
   
-  filtered = await filterImagesByReview(filtered);
+  // 使用異步版本進行篩選
+  filtered = await filterImagesByReviewAsync(filtered);
   state.filteredImages = filtered;
   
   // 調整當前索引（確保不超出範圍）
@@ -779,6 +1046,11 @@ async function deleteSelectedLabel() {
   }
 }
 
-// 啟動應用
-init();
+// 啟動應用 - 確保 DOM 已加載
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  // DOM 已經加載完成
+  init();
+}
 

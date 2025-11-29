@@ -1,0 +1,54 @@
+{
+  "metadata": {
+    "startTime": "2025-11-29T20:09:11.231Z",
+    "endTime": null,
+    "duration": null,
+    "totalEpochs": 5,
+    "batchSize": 32,
+    "learningRate": 0.001,
+    "optimizer": "adam",
+    "lossFunction": "categoricalCrossentropy",
+    "validationSplit": 0.2,
+    "imageSize": 224,
+    "numClasses": 16,
+    "totalImages": 106,
+    "classNames": [
+      "Brazil",
+      "China",
+      "France",
+      "Greece",
+      "India",
+      "Italy",
+      "Japan",
+      "Korea",
+      "Mexico",
+      "Spain",
+      "Thailand",
+      "Turkey",
+      "UK",
+      "USA",
+      "Vietnam",
+      "其他"
+    ],
+    "baseModel": "mobilenet_1.00_224",
+    "featureExtractor": "reshape_1 (1024 dim)"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "loss": 3.320422887802124,
+      "accuracy": 0.0595238097012043,
+      "valLoss": 3.480520009994507,
+      "valAccuracy": null,
+      "timestamp": "2025-11-29T20:12:09.396Z"
+    },
+    {
+      "epoch": 2,
+      "loss": 2.721226692199707,
+      "accuracy": 0.190476194024086,
+      "valLoss": 4.032561302185059,
+      "valAccuracy": null,
+      "timestamp": "2025-11-29T20:15:13.266Z"
+    }
+  ]
+}
