@@ -102,18 +102,9 @@ export async function loadMobileNet(baseModelDir?: string): Promise<tf.LayersMod
       console.log(`   輸入形狀: ${model.inputs[0].shape}`);
       console.log(`   輸出形狀: ${model.outputs[0].shape}\n`);
       
-      // 如果成功，保存到本地以便下次使用
-      if (baseModelDir) {
-        try {
-          if (!fs.existsSync(baseModelDir)) {
-            fs.mkdirSync(baseModelDir, { recursive: true });
-          }
-          await model.save(`file://${baseModelDir}`);
-          console.log(`💾 模型已保存到本地: ${baseModelDir}\n`);
-        } catch (saveError) {
-          console.warn('⚠️  保存模型失敗（但可以繼續使用）:', saveError);
-        }
-      }
+      // 注意：由於使用 TensorFlow.js 瀏覽器版本，不支持 file:// 協議保存
+      // 基礎模型（MobileNet）每次都從網絡載入，不需要保存到本地
+      // 這不會影響訓練，因為我們只保存分類器模型
       
       return model;
     } catch (error) {

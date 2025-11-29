@@ -35,3 +35,4 @@ images/
 db.sqlite3
 *.sqlite3
 dataset/
+saved_model/
