@@ -8,6 +8,7 @@
     "start": "ts-node src/index.ts",
     "server": "ts-node src/server.ts",
     "server:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "train": "ts-node src/train.ts",
     "scrape": "ts-node src/index.ts --scrape",
     "download": "ts-node src/index.ts --download",
     "process": "ts-node src/index.ts --process",
@@ -47,6 +48,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-cpu": "^4.22.0",
     "@tensorflow/tfjs-converter": "^4.22.0",
     "@tensorflow/tfjs-core": "^4.22.0",

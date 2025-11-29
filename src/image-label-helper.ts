@@ -212,7 +212,8 @@ export function getLabeledImagesForTraining(): Array<{
   const rows = stmt.all() as any[];
   return rows.map(row => ({
     imageId: row.image_id,
-    filePath: row.keyword ? `${row.keyword}/${row.file_name}` : row.file_name,
+    // file_name 已經包含了完整的路徑（如 "China/processed_China_100_1762795342742.jpg"）
+    filePath: row.file_name,
     label: row.label,
     isManual: row.is_manual === 1
   }));

@@ -61,6 +61,7 @@ export function prepareTrainingDataset(): {
     // 為每個標籤創建目錄並複製圖片
     Object.keys(imagesByLabel).forEach(label => {
       const labelDir = path.join(datasetDir, label);
+      let labelProcessed = 0; // 每個標籤實際複製的文件數
       
       // 創建標籤目錄
       if (!fs.existsSync(labelDir)) {
@@ -69,10 +70,8 @@ export function prepareTrainingDataset(): {
 
       // 複製圖片到對應目錄
       imagesByLabel[label].forEach((img, index) => {
-        // filePath 格式可能是 "China/filename.jpg" 或 "filename.jpg"
-        const sourcePath = img.filePath.includes('/') 
-          ? path.join(imagesDir, img.filePath)
-          : path.join(imagesDir, label, img.filePath);
+        // filePath 格式是 "China/processed_China_100_1762795342742.jpg"（已經包含路徑）
+        const sourcePath = path.join(imagesDir, img.filePath);
         
         const ext = path.extname(img.filePath) || '.jpg';
         const destFileName = `${label}_${img.imageId}_${index}${ext}`;
@@ -80,15 +79,20 @@ export function prepareTrainingDataset(): {
 
         // 檢查源文件是否存在
         if (fs.existsSync(sourcePath)) {
-          // 複製文件
-          fs.copyFileSync(sourcePath, destPath);
-          totalProcessed++;
+          try {
+            // 複製文件
+            fs.copyFileSync(sourcePath, destPath);
+            totalProcessed++;
+            labelProcessed++;
+          } catch (error) {
+            console.error(`複製文件失敗: ${sourcePath} -> ${destPath}`, error);
+          }
         } else {
           console.warn(`源文件不存在: ${sourcePath}`);
         }
       });
 
-      categories[label] = imagesByLabel[label].length;
+      categories[label] = labelProcessed;
     });
 
     return {

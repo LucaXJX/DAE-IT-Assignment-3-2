@@ -425,6 +425,47 @@ app.get('/api/train/dataset-ready', async (req, res) => {
   }
 });
 
+// 開始訓練模型
+app.post('/api/train', async (req, res) => {
+  try {
+    const { epochs = 10, batchSize = 32 } = req.body;
+
+    // 檢查數據集是否準備就緒
+    if (!isDatasetReady()) {
+      return res.status(400).json({
+        success: false,
+        error: '訓練數據集未準備就緒，請先準備訓練數據'
+      });
+    }
+
+    // 這裡我們使用後台任務的方式，因為訓練可能需要較長時間
+    // 簡單版本：直接訓練（會阻塞請求）
+    res.json({
+      success: true,
+      message: '訓練已開始，請查看服務器日誌',
+      note: '訓練過程可能需要幾分鐘，請耐心等待'
+    });
+
+    // 異步執行訓練（不阻塞響應）
+    setTimeout(async () => {
+      try {
+        const { train } = await import('./train');
+        await train();
+        console.log('✅ 模型訓練完成！');
+      } catch (error) {
+        console.error('❌ 訓練過程發生錯誤:', error);
+      }
+    }, 100);
+
+  } catch (error) {
+    console.error('啟動訓練失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
 // 首頁路由
 app.get('/', (req, res) => {
   const indexPath = path.join(rootDir, 'public/index.html');
