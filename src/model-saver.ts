@@ -39,15 +39,24 @@ export async function saveModelManually(
   // 收集所有權重
   for (let i = 0; i < model.weights.length; i++) {
     const weight = model.weights[i];
-    const values = await weight.val.array();
+    // 使用 read() 方法而不是 val 屬性
+    const weightTensor = weight.read();
+    const values = await weightTensor.array();
     const flattened = (values as number[]).flat(Infinity) as number[];
     
     weightData.push(...flattened);
+    
+    // 過濾掉 null 值，只保留有效的數字
+    const validShape = weight.shape.filter((s): s is number => s !== null) as number[];
+    
     weightSpecs.push({
       name: weight.name,
-      shape: weight.shape,
+      shape: validShape,
       dtype: weight.dtype,
     });
+    
+    // 清理臨時 tensor
+    weightTensor.dispose();
   }
 
   // 3. 將權重保存為二進制文件（使用 Float32Array）
@@ -79,7 +88,7 @@ export async function saveModelManually(
 
 ## 載入模型
 
-要載入此模型，請使用 \`loadModelManually()\` 函數。
+要載入此模型，請使用 \`classifier.ts\` 中的 \`loadClassifierModel()\` 函數或 \`train.ts\` 中的標準載入邏輯。
 
 注意：此模型是使用 TensorFlow.js 瀏覽器版本訓練的，需要在相同環境下載入。
 `;
@@ -104,47 +113,15 @@ export async function loadModelManually(modelDir: string): Promise<tf.LayersMode
     throw new Error(`模型結構文件不存在: ${modelJsonPath}`);
   }
 
-  // 1. 讀取模型結構
-  const modelJson = JSON.parse(fs.readFileSync(modelJsonPath, 'utf-8'));
-
-  // 2. 創建模型（不包含權重）
-  const model = await tf.loadLayersModel(
-    tf.io.fromMemory(modelJson, new ArrayBuffer(0))
+  // 注意：此函數功能尚未完全實現
+  // 實際上，模型載入應該使用 classifier.ts 中的邏輯，它已經實現了完整的手動載入功能
+  // 或者使用 train.ts 中 tryLoadExistingModel 的邏輯
+  throw new Error(
+    'loadModelManually 功能尚未完全實現。\n' +
+    '請使用以下方式之一載入模型：\n' +
+    '1. 使用 classifier.ts 中的 loadClassifierModel() 函數\n' +
+    '2. 使用 train.ts 中的 tryLoadExistingModel() 函數\n' +
+    '3. 確保模型使用標準 TensorFlow.js 格式保存，然後使用 file:// 協議載入'
   );
-
-  // 3. 讀取權重規格
-  const weightSpecs = JSON.parse(fs.readFileSync(weightSpecsPath, 'utf-8'));
-
-  // 4. 讀取權重數據
-  const weightBuffer = fs.readFileSync(weightsPath);
-  const weightArray = new Float32Array(
-    weightBuffer.buffer,
-    weightBuffer.byteOffset,
-    weightBuffer.byteLength / 4
-  );
-
-  // 5. 重建權重並設置到模型
-  let offset = 0;
-  for (let i = 0; i < weightSpecs.length; i++) {
-    const spec = weightSpecs[i];
-    const layer = model.getLayer(spec.name.split('/')[0]); // 獲取層名
-    
-    if (layer) {
-      const size = spec.shape.reduce((a, b) => a * b, 1);
-      const values = weightArray.slice(offset, offset + size);
-      const tensor = tf.tensor(values, spec.shape, spec.dtype);
-      
-      // 設置權重
-      // 注意：這需要找到對應的權重並替換
-      offset += size;
-    }
-  }
-
-  // 簡化版本：使用標準載入方式
-  // 但這需要權重文件格式匹配
-  console.warn('⚠️  手動載入模型需要額外實現權重建構邏輯');
-  console.warn('   建議：保存時同時生成 TensorFlow.js 兼容格式');
-
-  return model;
 }
 

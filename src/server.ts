@@ -17,6 +17,12 @@ import {
   getDatasetStats,
   isDatasetReady
 } from './train-helper';
+import {
+  classifyImage,
+  classifyImagesBatch,
+  isModelAvailable,
+  getModelInfo
+} from './classifier';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -243,17 +249,36 @@ app.get('/api/images/:imageId/labels', async (req, res) => {
 app.post('/api/images/:imageId/classify', async (req, res) => {
   try {
     const { imageId } = req.params;
+    const { topK = 3 } = req.body;
 
-    // TODO: 使用 TensorFlow.js 進行分類
-    // 這裡暫時返回示例數據
+    // 檢查模型是否可用
+    if (!isModelAvailable()) {
+      return res.status(503).json({
+        success: false,
+        error: '模型尚未訓練或不可用，請先訓練模型'
+      });
+    }
+
+    // 解析 imageId（格式：country_filename.jpg）
+    const [country, ...filenameParts] = imageId.split('_');
+    const filename = filenameParts.join('_');
+
+    // 構建完整的圖片路徑
+    const imagePath = path.join(imagesDir, country, filename);
+
+    if (!fs.existsSync(imagePath)) {
+      return res.status(404).json({
+        success: false,
+        error: '圖片文件不存在'
+      });
+    }
+
+    // 進行分類預測
+    const predictions = await classifyImage(imagePath, topK);
 
     res.json({
       success: true,
-      predictions: [
-        { label: 'Italy', confidence: 0.85 },
-        { label: 'Japan', confidence: 0.10 },
-        { label: 'China', confidence: 0.05 }
-      ]
+      predictions
     });
   } catch (error) {
     console.error('分類失敗:', error);
@@ -459,6 +484,121 @@ app.post('/api/train', async (req, res) => {
 
   } catch (error) {
     console.error('啟動訓練失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 獲取模型信息
+app.get('/api/model/info', async (req, res) => {
+  try {
+    const info = getModelInfo();
+    res.json({
+      success: true,
+      model: info
+    });
+  } catch (error) {
+    console.error('獲取模型信息失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 批量分類圖片（AI 自動分類）
+app.post('/api/images/batch-classify', async (req, res) => {
+  try {
+    const { limit = 50, topK = 1, batchSize = 8, saveResults = true } = req.body;
+
+    // 檢查模型是否可用
+    if (!isModelAvailable()) {
+      return res.status(503).json({
+        success: false,
+        error: '模型尚未訓練或不可用，請先訓練模型'
+      });
+    }
+
+    // 獲取未標註的圖片
+    const unlabeledImages = getUnlabeledImages(limit);
+
+    if (unlabeledImages.length === 0) {
+      return res.json({
+        success: true,
+        message: '沒有未標註的圖片',
+        classified: 0,
+        results: []
+      });
+    }
+
+    // 構建圖片路徑數組
+    const imagePaths = unlabeledImages.map(img => 
+      path.join(imagesDir, img.filePath)
+    ).filter(imgPath => fs.existsSync(imgPath));
+
+    if (imagePaths.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: '未找到有效的圖片文件'
+      });
+    }
+
+    // 返回響應（不阻塞）
+    res.json({
+      success: true,
+      message: '批量分類已開始',
+      total: imagePaths.length,
+      note: '分類結果將保存到資料庫，請查看服務器日誌獲取進度'
+    });
+
+    // 異步執行批量分類
+    setTimeout(async () => {
+      try {
+        console.log(`\n🚀 開始批量分類 ${imagePaths.length} 張圖片...\n`);
+        
+        const results = await classifyImagesBatch(imagePaths, topK, batchSize);
+
+        // 保存分類結果到資料庫
+        if (saveResults) {
+          let savedCount = 0;
+          for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            const unlabeledImage = unlabeledImages[i];
+
+            if (result.error || result.predictions.length === 0) {
+              console.warn(`   跳過圖片 ${i + 1}: ${result.error || '無預測結果'}`);
+              continue;
+            }
+
+            // 獲取最高置信度的預測
+            const topPrediction = result.predictions[0];
+
+            // 保存標籤到資料庫（AI 分類，未審核）
+            try {
+              saveImageLabel({
+                image_id: unlabeledImage.id,
+                label: topPrediction.label,
+                confidence: topPrediction.confidence,
+                is_manual: false,
+                reviewed: false
+              });
+              savedCount++;
+            } catch (error) {
+              console.error(`   保存標籤失敗: ${result.path}`, error);
+            }
+          }
+
+          console.log(`\n✅ 批量分類完成: ${savedCount}/${results.length} 個結果已保存到資料庫\n`);
+        }
+      } catch (error) {
+        console.error('❌ 批量分類過程發生錯誤:', error);
+      }
+    }, 100);
+
+  } catch (error) {
+    console.error('批量分類失敗:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '未知錯誤'
