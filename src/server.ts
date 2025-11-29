@@ -12,6 +12,11 @@ import {
   getLabeledStats,
   getUnlabeledImages
 } from './image-label-helper';
+import {
+  prepareTrainingDataset,
+  getDatasetStats,
+  isDatasetReady
+} from './train-helper';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -348,6 +353,71 @@ app.put('/api/images/:imageId/labels/:labelId/review', async (req, res) => {
     });
   } catch (error) {
     console.error('標記審核失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 準備訓練數據集
+app.post('/api/train/prepare', async (req, res) => {
+  try {
+    const result = prepareTrainingDataset();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: '訓練數據集準備完成',
+        data: {
+          totalImages: result.totalImages,
+          categories: result.categories
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error || '準備訓練數據集失敗'
+      });
+    }
+  } catch (error) {
+    console.error('準備訓練數據集失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 獲取訓練數據集統計
+app.get('/api/train/dataset-stats', async (req, res) => {
+  try {
+    const stats = getDatasetStats();
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('獲取數據集統計失敗:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知錯誤'
+    });
+  }
+});
+
+// 檢查訓練數據集是否準備就緒
+app.get('/api/train/dataset-ready', async (req, res) => {
+  try {
+    const ready = isDatasetReady();
+    const stats = getDatasetStats();
+    res.json({
+      success: true,
+      ready,
+      stats
+    });
+  } catch (error) {
+    console.error('檢查數據集狀態失敗:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '未知錯誤'
