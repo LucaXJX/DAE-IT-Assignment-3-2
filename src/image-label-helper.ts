@@ -250,7 +250,7 @@ export function getUnlabeledImages(limit: number = 100): Array<{
 /**
  * 獲取每個文件夾（國家）的未標註圖片（每個文件夾最多 limit 張）
  */
-export function getUnlabeledImagesPerCountry(limitPerCountry: number = 10): Array<{
+export function getUnlabeledImagesPerCountry(limitPerCountry: number = 50): Array<{
   id: number;
   filePath: string;
   country: string;

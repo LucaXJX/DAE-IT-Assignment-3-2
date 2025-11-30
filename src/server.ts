@@ -157,7 +157,9 @@ interface ImageInfo {
 app.get("/api/debug/review-stats", async (req, res) => {
   try {
     // 總體統計
-    const overallStats = db.prepare(`
+    const overallStats = db
+      .prepare(
+        `
       SELECT 
         i.keyword as country,
         il.is_manual,
@@ -167,10 +169,14 @@ app.get("/api/debug/review-stats", async (req, res) => {
       JOIN images i ON il.image_id = i.id
       GROUP BY i.keyword, il.is_manual, il.reviewed
       ORDER BY i.keyword, il.is_manual, il.reviewed
-    `).all() as any[];
-    
+    `
+      )
+      .all() as any[];
+
     // 未審核的 AI 標籤詳情
-    const unreviewedAI = db.prepare(`
+    const unreviewedAI = db
+      .prepare(
+        `
       SELECT 
         i.id as image_id,
         i.keyword as country,
@@ -183,31 +189,37 @@ app.get("/api/debug/review-stats", async (req, res) => {
       JOIN images i ON il.image_id = i.id
       WHERE il.reviewed = 0 AND il.is_manual = 0
       LIMIT 20
-    `).all() as any[];
-    
+    `
+      )
+      .all() as any[];
+
     // 所有唯一的關鍵字（用於檢查國家名稱）
-    const allKeywords = db.prepare(`
+    const allKeywords = db
+      .prepare(
+        `
       SELECT DISTINCT keyword, COUNT(*) as image_count
       FROM images
       WHERE keyword IS NOT NULL AND keyword != ''
       GROUP BY keyword
       ORDER BY keyword
-    `).all() as any[];
-    
+    `
+      )
+      .all() as any[];
+
     res.json({
       success: true,
       overallStats,
       unreviewedAI: {
         count: unreviewedAI.length,
-        samples: unreviewedAI
+        samples: unreviewedAI,
       },
       allKeywords,
-      totalStats: overallStats.length
+      totalStats: overallStats.length,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : "未知錯誤"
+      error: error instanceof Error ? error.message : "未知錯誤",
     });
   }
 });
@@ -217,7 +229,9 @@ app.get("/api/images/review", async (req, res) => {
   try {
     const { country, filterType = "ai" } = req.query;
 
-    console.log(`🔍 審核模式查詢 - 國家: ${country || 'all'}, 類型: ${filterType}`);
+    console.log(
+      `🔍 審核模式查詢 - 國家: ${country || "all"}, 類型: ${filterType}`
+    );
 
     // 獲取需要審核的圖片
     const reviewImages = getImagesForReview(
@@ -231,7 +245,7 @@ app.get("/api/images/review", async (req, res) => {
     const images: ImageInfo[] = reviewImages.map((img) => {
       // img.country 現在已經是實際的國家名稱（不是關鍵字）
       // img.filename 現在已經是正確的文件名
-      const imgCountry = img.country || '';
+      const imgCountry = img.country || "";
       const filename = img.filename || path.basename(img.filePath);
 
       return {
@@ -565,11 +579,11 @@ app.post("/api/images/:imageId/classify", async (req, res) => {
 app.get("/api/countries", async (req, res) => {
   try {
     const { mode, filterType } = req.query;
-    
+
     // 如果是審核模式，從資料庫中獲取有未審核標籤的國家
-    if (mode === 'review') {
-      const filterTypeValue = (filterType as string) || 'ai';
-      
+    if (mode === "review") {
+      const filterTypeValue = (filterType as string) || "ai";
+
       // 構建查詢：獲取有未審核標籤的國家
       let query = `
         SELECT DISTINCT
@@ -579,42 +593,44 @@ app.get("/api/countries", async (req, res) => {
         JOIN images i ON il.image_id = i.id
         WHERE il.reviewed = 0
       `;
-      
+
       const params: any[] = [];
-      
-      if (filterTypeValue === 'ai') {
-        query += ' AND il.is_manual = 0';
-      } else if (filterTypeValue === 'manual') {
-        query += ' AND il.is_manual = 1';
+
+      if (filterTypeValue === "ai") {
+        query += " AND il.is_manual = 0";
+      } else if (filterTypeValue === "manual") {
+        query += " AND il.is_manual = 1";
       }
-      
-      query += ' GROUP BY i.keyword ORDER BY i.keyword';
-      
+
+      query += " GROUP BY i.keyword ORDER BY i.keyword";
+
       const stmt = db.prepare(query);
       const rows = stmt.all(...params) as any[];
-      
+
       // 將關鍵字轉換為國家名稱，並統計數量
       const countryMap = new Map<string, number>();
-      
-      rows.forEach(row => {
-        const country = getCountryFromKeyword(row.keyword || '');
+
+      rows.forEach((row) => {
+        const country = getCountryFromKeyword(row.keyword || "");
         const currentCount = countryMap.get(country) || 0;
         countryMap.set(country, currentCount + (row.count || 0));
       });
-      
+
       // 轉換為數組格式
-      const countriesWithCount = Array.from(countryMap.entries()).map(([name, count]) => ({
-        name,
-        count
-      }));
-      
+      const countriesWithCount = Array.from(countryMap.entries()).map(
+        ([name, count]) => ({
+          name,
+          count,
+        })
+      );
+
       return res.json({
         success: true,
         countries: countriesWithCount,
         total: countriesWithCount.length,
       });
     }
-    
+
     // 標註模式：從文件系統獲取
     const countries = fs.readdirSync(imagesDir).filter((item) => {
       const itemPath = path.join(imagesDir, item);
@@ -857,7 +873,7 @@ app.get("/api/model/info", async (req, res) => {
 app.post("/api/images/batch-classify", async (req, res) => {
   try {
     const {
-      limitPerCountry = 30, // 每個文件夾最多分類的圖片數量
+      limitPerCountry = 50, // 每個文件夾最多分類的圖片數量
       topK = 1,
       batchSize = 8,
       saveResults = true,
@@ -929,20 +945,22 @@ app.post("/api/images/batch-classify", async (req, res) => {
 
             // 獲取最高置信度的預測
             const topPrediction = result.predictions[0];
-            
+
             // 置信度閾值：如果最高置信度低於此值，分類為"其他"
             const CONFIDENCE_THRESHOLD = 0.3; // 30% 置信度閾值
-            
+
             // 確定最終標籤
             let finalLabel: string;
             let finalConfidence: number;
-            
+
             if (topPrediction.confidence < CONFIDENCE_THRESHOLD) {
               // 置信度太低，分類為"其他"
               finalLabel = "其他";
               finalConfidence = topPrediction.confidence; // 保留原始置信度作為參考
               console.log(
-                `   ⚠️  圖片 ${i + 1}: 置信度過低 (${(topPrediction.confidence * 100).toFixed(1)}%)，分類為"其他"（原預測: ${topPrediction.label}）`
+                `   ⚠️  圖片 ${i + 1}: 置信度過低 (${(
+                  topPrediction.confidence * 100
+                ).toFixed(1)}%)，分類為"其他"（原預測: ${topPrediction.label}）`
               );
             } else {
               // 置信度足夠高，使用原始預測

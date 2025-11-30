@@ -653,9 +653,9 @@ async function saveLabel(labelToSave = null) {
   }
 }
 
-// 批量自動分類（每個文件夾 10 張圖片）
+// 批量自動分類（每個文件夾 50 張圖片）
 async function classifyImage() {
-  console.log('🚀 開始批量自動分類（每個文件夾 10 張圖片）...');
+  console.log('🚀 開始批量自動分類（每個文件夾 50 張圖片）...');
   
   try {
     showLoading(true);
@@ -666,14 +666,14 @@ async function classifyImage() {
       elements.classifyBtn.textContent = '🔄 批量分類中...';
     }
     
-    // 調用批量分類 API（每個文件夾最多 10 張）
+    // 調用批量分類 API（每個文件夾最多 50 張）
     const response = await fetch(`${API_BASE}/api/images/batch-classify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        limitPerCountry: 10, // 每個文件夾最多 10 張
+        limitPerCountry: 50, // 每個文件夾最多 50 張
         topK: 1,
         batchSize: 8,
         saveResults: true // 自動保存結果
@@ -689,7 +689,7 @@ async function classifyImage() {
     
     if (data.success) {
       console.log('✅ 批量自動分類已開始:', data);
-      showSuccess(`批量自動分類已開始！將在每個文件夾分類最多 10 張圖片，共 ${data.total} 張。請查看服務器日誌獲取進度。完成後可在「審核模式」中檢查結果。`);
+      showSuccess(`批量自動分類已開始！將在每個文件夾分類最多 50 張圖片，共 ${data.total} 張。請查看服務器日誌獲取進度。完成後可在「審核模式」中檢查結果。`);
       
       // 更新統計
       setTimeout(async () => {
@@ -707,7 +707,7 @@ async function classifyImage() {
     // 恢復按鈕狀態
     if (elements.classifyBtn) {
       elements.classifyBtn.disabled = false;
-      elements.classifyBtn.textContent = '🚀 批量自動分類（每個文件夾 10 張）';
+      elements.classifyBtn.textContent = '🚀 批量自動分類（每個文件夾 50 張）';
     }
   }
 }
