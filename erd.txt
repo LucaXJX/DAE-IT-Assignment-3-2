@@ -14,6 +14,9 @@
 #
 ////////////////////////////////////
 
+# ============================================
+# 圖片下載和處理模塊
+# ============================================
 
 images
 ------
@@ -22,14 +25,159 @@ keyword text|null
 url varchar(2048) unique
 alt_text text
 file_name varchar(255)
+file_path varchar(512)
+country varchar(100)
 download_status enum('pending','downloading','downloaded','failed')
 process_status enum('pending','processing','processed','failed')
 file_size integer
 width integer
 height integer
+channels integer
+format varchar(10)
+checksum varchar(64)
 error_message text
 created_at timestamp
 updated_at timestamp
+
+
+# ============================================
+# AI 訓練和分類模塊
+# ============================================
+
+labels
+------
+id integer PK
+name varchar(100) unique
+description text
+category varchar(50)
+created_at timestamp
+updated_at timestamp
+
+
+image_labels
+------------
+id integer PK
+image_id integer FK >- images.id
+label_id integer FK >- labels.id
+confidence decimal(5,4)
+is_manual boolean default 0
+is_reviewed boolean default 0
+reviewed_at timestamp|null
+reviewed_by varchar(100)|null
+model_version varchar(50)|null
+created_at timestamp
+updated_at timestamp
+
+# Note: unique constraint on (image_id, label_id) should be enforced in application layer
+
+
+training_runs
+-------------
+id integer PK
+name varchar(200)
+description text
+model_version varchar(50)
+complexity integer
+epochs integer
+batch_size integer
+learning_rate decimal(10,8)
+validation_split decimal(3,2)
+dataset_path varchar(512)
+model_path varchar(512)
+status enum('pending','training','completed','failed','cancelled')
+accuracy decimal(5,4)|null
+loss decimal(10,8)|null
+val_accuracy decimal(5,4)|null
+val_loss decimal(10,8)|null
+started_at timestamp|null
+completed_at timestamp|null
+error_message text|null
+created_at timestamp
+updated_at timestamp
+
+
+training_samples
+----------------
+id integer PK
+training_run_id integer FK >- training_runs.id
+image_id integer FK >- images.id
+label_id integer FK >- labels.id
+split_type enum('train','validation','test')
+created_at timestamp
+
+
+# ============================================
+# image-dataset 整合模塊
+# ============================================
+
+datasets
+--------
+id integer PK
+name varchar(200) unique
+description text
+source_type enum('scraper','image-dataset','manual','imported')
+dataset_path varchar(512)
+total_images integer default 0
+created_at timestamp
+updated_at timestamp
+
+
+dataset_images
+--------------
+id integer PK
+dataset_id integer FK >- datasets.id
+image_id integer FK >- images.id
+folder_name varchar(100)
+created_at timestamp
+
+# Note: unique constraint on (dataset_id, image_id) should be enforced in application layer
+
+
+model_versions
+--------------
+id integer PK
+version varchar(50) unique
+model_type enum('classifier','image-dataset','custom')
+model_path varchar(512)
+source_training_run_id integer FK -0 training_runs.id
+description text
+is_active boolean default 0
+performance_metrics text
+created_at timestamp
+updated_at timestamp
+
+
+# ============================================
+# 審核和質量控制模塊
+# ============================================
+
+reviews
+-------
+id integer PK
+image_id integer FK >- images.id
+image_label_id integer FK -0 image_labels.id
+review_type enum('quality','classification','content')
+status enum('pending','approved','rejected','needs_rework')
+reviewer varchar(100)
+comments text
+created_at timestamp
+updated_at timestamp
+
+
+# ============================================
+# 統計和分析模塊（可選）
+# ============================================
+
+statistics
+----------
+id integer PK
+stat_type varchar(50)
+stat_key varchar(100)
+stat_value text
+date_recorded date
+created_at timestamp
+
+# Note: unique constraint on (stat_type, stat_key, date_recorded) should be enforced in application layer
 
 
 # zoom: 1.000
@@ -40,4 +188,3 @@ updated_at timestamp
 # diagram-text: #000000
 # table-bg: #ffffff
 # table-text: #000000
-# images (400, 300)

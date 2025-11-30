@@ -12,8 +12,8 @@ import type { Images } from "./proxy";
 export function insertImagesBatch(images: Partial<Images>[]): number {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO images 
-    (keyword, url, alt_text, file_name, download_status, process_status, file_size, width, height, error_message, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (keyword, url, alt_text, file_name, file_path, country, download_status, process_status, file_size, width, height, channels, format, checksum, error_message, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let count = 0;
@@ -24,11 +24,16 @@ export function insertImagesBatch(images: Partial<Images>[]): number {
         image.url,
         image.alt_text || "",
         image.file_name || "",
+        image.file_path || null,
+        image.country || null,
         image.download_status || "pending",
         image.process_status || "pending",
         image.file_size || 0,
         image.width || 0,
         image.height || 0,
+        image.channels || null,
+        image.format || null,
+        image.checksum || null,
         image.error_message || "",
         image.created_at || new Date().toISOString(),
         image.updated_at || new Date().toISOString()

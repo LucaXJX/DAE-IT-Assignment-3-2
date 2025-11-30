@@ -1,5 +1,6 @@
 import type { Knex } from 'knex'
 import { dbFile } from './src/db'
+import * as path from 'path'
 
 const config: { [key: string]: Knex.Config } = {
   development: {
@@ -7,6 +8,11 @@ const config: { [key: string]: Knex.Config } = {
     useNullAsDefault: true,
     connection: {
       filename: dbFile,
+    },
+    migrations: {
+      directory: path.resolve(__dirname, 'migrations'),
+      extension: 'ts',
+      tableName: 'knex_migrations',
     },
   }
 }

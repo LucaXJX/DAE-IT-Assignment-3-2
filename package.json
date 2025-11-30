@@ -1,15 +1,16 @@
 {
-  "name": "dae-it-assignment-3-1",
-  "version": "1.0.0",
-  "description": "- 姓名：XU JIAXIN\r - 學號：24829139\r - 主題編號：9\r - 主題名稱：世界各地的特色美食",
+  "name": "dae-it-assignment-3-2",
+  "version": "2.0.0",
+  "description": "- 姓名：XU JIAXIN\r - 學號：24829139\r - 主題編號：9\r - 主題名稱：世界各地的特色美食\r - 習作二：圖像數據集清理與統計",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "ts-node src/index.ts",
+    "server": "ts-node src/server.ts",
+    "server:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "scrape": "ts-node src/index.ts --scrape",
     "download": "ts-node src/index.ts --download",
     "process": "ts-node src/index.ts --process",
-    "stats": "node check-progress.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -19,7 +20,15 @@
     "db:update": "cat erd.txt | auto-migrate db.sqlite3 && cat erd.txt | erd-to-proxy > src/proxy.ts",
     "db:dev": "cat erd.txt | auto-migrate plan && cat erd.txt | auto-migrate db.sqlite3 && cat erd.txt | erd-to-proxy > src/proxy.ts",
     "db:gen-proxy": "cat erd.txt | erd-to-proxy",
-    "db:ui": "cat erd.txt | erd-ui"
+    "db:ui": "cat erd.txt | erd-ui",
+    "prepare:dataset": "ts-node src/prepare-dataset.ts",
+    "generate:report": "ts-node src/generate-report.ts",
+    "dataset:webui": "npx image-dataset --webUI --downloadDir ./dataset --port 8100",
+    "dataset:classify": "npx image-dataset --analysis --downloadDir ./dataset --complexity 3",
+    "dataset:classify:low": "npx image-dataset --analysis --downloadDir ./dataset --complexity 1",
+    "dataset:classify:high": "npx image-dataset --analysis --downloadDir ./dataset --complexity 5",
+    "dataset:rename": "npx image-dataset --rename --downloadDir ./dataset",
+    "dataset:benchmark": "npx image-dataset --benchmark --downloadDir ./dataset"
   },
   "repository": {
     "type": "git",
@@ -34,21 +43,30 @@
   "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1#readme",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
     "@types/integer": "^4.0.3",
-    "@types/node": "^24.10.0",
+    "@types/node": "^24.10.1",
     "quick-erd": "^4.29.1",
+    "rimraf": "^6.1.2",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
     "better-sqlite3": "^12.4.1",
     "better-sqlite3-proxy": "^2.11.3",
     "better-sqlite3-schema": "^3.1.9",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "image-dataset": "^1.12.2",
     "knex": "^3.1.0",
     "pexels": "^1.4.0",
     "playwright": "^1.56.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "tensorflow-helpers": "^1.5.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -1,0 +1,37 @@
+# Visualize on https://erd.surge.sh
+# or https://quick-erd.surge.sh
+#
+# Relationship Types
+#  -    - one to one
+#  -<   - one to many
+#  >-   - many to one
+#  >-<  - many to many
+#  -0   - one to zero or one
+#  0-   - zero or one to one
+#  0-0  - zero or one to zero or one
+#  -0<  - one to zero or many
+#  >0-  - zero or many to one
+#
+////////////////////////////////////
+
+images
+------
+id integer PK
+keyword text|null
+url varchar(2048) unique
+alt_text text
+file_name varchar(255)
+file_path varchar(512)
+country varchar(100)
+download_status enum('pending','downloading','downloaded','failed')
+process_status enum('pending','processing','processed','failed')
+file_size integer
+width integer
+height integer
+channels integer
+format varchar(10)
+checksum varchar(64)
+error_message text
+created_at timestamp
+updated_at timestamp
+
