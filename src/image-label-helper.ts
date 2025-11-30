@@ -5,6 +5,7 @@
 import { db } from './db';
 import type { ImageLabels } from './proxy';
 import * as path from 'path';
+import { getKeywordPatternsFromCountry, getCountryFromKeyword } from './config';
 
 export interface ImageLabelData {
   id?: number;
@@ -407,19 +408,82 @@ export function getImagesForReview(
   
   // 按國家篩選（如果指定）
   if (country && country !== 'all') {
-    query += ' AND i.keyword = ?';
+    // 將國家名稱映射到可能的關鍵字模式
+    // 資料庫中存儲的是完整的搜索關鍵字（如 "Chinese cuisine traditional dishes"）
+    // 但前端傳遞的是簡短的國家名稱（如 "China"）
+    const keywordPatterns = getKeywordPatternsFromCountry(country);
+    
+    // 構建 LIKE 查詢條件
+    const likeConditions = keywordPatterns.map(() => 'i.keyword LIKE ?').join(' OR ');
+    query += ` AND (${likeConditions} OR i.keyword = ?)`;
+    
+    // 添加所有模式參數
+    params.push(...keywordPatterns);
+    // 也添加精確匹配（以防萬一）
     params.push(country);
   }
   
   query += ' ORDER BY i.id, il.created_at DESC';
   
+  // 調試：打印查詢語句和參數
+  console.log('🔍 審核圖片查詢:', query);
+  console.log('🔍 查詢參數:', params);
+  
   const stmt = db.prepare(query);
   const rows = stmt.all(...params) as any[];
+  
+  // 調試：打印查詢結果數量
+  console.log(`📊 查詢到 ${rows.length} 條標籤記錄`);
   
   // 使用 Map 來去重，每個圖片只保留最新的標籤
   const imageMap = new Map<number, any>();
   
+  // 調試：檢查是否有任何未審核的標籤（不按國家篩選）
+  if (rows.length === 0) {
+    const debugStmt = db.prepare(`
+      SELECT COUNT(*) as total_unreviewed
+      FROM image_labels il
+      JOIN images i ON il.image_id = i.id
+      WHERE il.reviewed = 0
+    `);
+    const debugResult = debugStmt.get() as any;
+    console.log(`📊 資料庫中總共有 ${debugResult?.total_unreviewed || 0} 個未審核的標籤`);
+    
+    // 如果指定了國家，檢查該國家是否有未審核的標籤
+    if (country && country !== 'all') {
+      const countryDebugStmt = db.prepare(`
+        SELECT COUNT(*) as total_unreviewed
+        FROM image_labels il
+        JOIN images i ON il.image_id = i.id
+        WHERE il.reviewed = 0 AND i.keyword = ?
+      `);
+      const countryDebugResult = countryDebugStmt.get(country) as any;
+      console.log(`📊 國家 "${country}" 有 ${countryDebugResult?.total_unreviewed || 0} 個未審核的標籤`);
+      
+      // 列出該國家的所有關鍵字值（用於調試）
+      const keywordStmt = db.prepare(`
+        SELECT DISTINCT i.keyword, COUNT(*) as count
+        FROM images i
+        WHERE i.keyword LIKE ? OR i.keyword = ?
+        GROUP BY i.keyword
+      `);
+      const keywords = keywordStmt.all(`%${country}%`, country) as any[];
+      console.log(`🔍 資料庫中相關的關鍵字:`, keywords);
+    }
+  }
+  
   rows.forEach(row => {
+    // 調試：打印前幾條記錄
+    if (imageMap.size < 3) {
+      console.log('📋 標籤記錄示例:', {
+        id: row.id,
+        file_name: row.file_name,
+        keyword: row.keyword,
+        label: row.label,
+        is_manual: row.is_manual,
+        reviewed: row.reviewed
+      });
+    }
     if (!imageMap.has(row.id)) {
       // 處理 file_name 可能包含路徑的情況
       let filePath: string;
@@ -429,11 +493,40 @@ export function getImagesForReview(
         filePath = row.keyword ? `${row.keyword}/${row.file_name}` : row.file_name;
       }
       
+      // 從 file_name 或關鍵字中提取實際的國家名稱
+      let actualCountry: string;
+      if (row.file_name.includes('/') || row.file_name.includes('\\')) {
+        // 如果 file_name 包含路徑，從路徑中提取國家名稱
+        const pathParts = row.file_name.split(/[/\\]/);
+        actualCountry = pathParts[0] || '';
+      } else {
+        // 否則從關鍵字推斷國家名稱
+        actualCountry = getCountryFromKeyword(row.keyword || '');
+      }
+      
+      // 提取實際的文件名（不包含路徑）
+      let actualFilename: string;
+      if (row.file_name.includes('/') || row.file_name.includes('\\')) {
+        // 如果 file_name 包含路徑，提取文件名部分
+        const pathParts = row.file_name.split(/[/\\]/);
+        actualFilename = pathParts[pathParts.length - 1] || row.file_name;
+      } else {
+        // 如果 file_name 只是文件名，直接使用
+        actualFilename = row.file_name;
+      }
+      
+      // 確保 filename 是實際的文件名（應該以 .jpg, .png 等結尾）
+      if (!actualFilename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // 如果 filename 不像是文件，嘗試從 filePath 中提取
+        const pathParts = filePath.split(/[/\\]/);
+        actualFilename = pathParts[pathParts.length - 1] || actualFilename;
+      }
+      
       imageMap.set(row.id, {
         id: row.id,
         filePath: filePath,
-        country: row.keyword || '',
-        filename: path.basename(filePath),
+        country: actualCountry, // 使用實際的國家名稱，而不是關鍵字
+        filename: actualFilename, // 使用實際的文件名
         label: row.label,
         confidence: row.confidence || 0,
         labelId: row.label_id,

@@ -137,3 +137,67 @@ export function getCountryFromKeyword(keyword: string): string {
   }
   return "Others"; // 默認分類
 }
+
+/**
+ * 從國家名稱獲取可能的關鍵字模式
+ * 用於資料庫查詢時匹配關鍵字
+ * 
+ * 注意：資料庫中的關鍵字格式可能是：
+ * - "Brazilian feijoada traditional food" (完整格式)
+ * - "Chinese cuisine traditional dishes" (完整格式)
+ * 
+ * 而國家名稱是：
+ * - "Brazil"
+ * - "China"
+ */
+export function getKeywordPatternsFromCountry(country: string): string[] {
+  const patterns: string[] = [];
+  
+  // 國家名稱到關鍵字前綴的映射（基於實際資料庫中的關鍵字格式）
+  const countryToKeywordPrefix: { [key: string]: string[] } = {
+    "Brazil": ["Brazilian"],
+    "China": ["Chinese"],
+    "Japan": ["Japanese"],
+    "Italy": ["Italian"],
+    "France": ["French"],
+    "Mexico": ["Mexican"],
+    "India": ["Indian"],
+    "Thailand": ["Thai"],
+    "Korea": ["Korean"],
+    "Vietnam": ["Vietnamese"],
+    "Spain": ["Spanish"],
+    "Greece": ["Greek"],
+    "Turkey": ["Turkish"],
+    "USA": ["American"],
+    "UK": ["British"],
+  };
+  
+  // 獲取國家名稱的關鍵字前綴
+  const countryLower = country.toLowerCase();
+  const prefixes = countryToKeywordPrefix[country] || 
+                   Object.entries(countryToKeywordPrefix).find(([key]) => 
+                     key.toLowerCase() === countryLower
+                   )?.[1] || 
+                   [];
+  
+  // 為每個前綴創建匹配模式
+  if (prefixes.length > 0) {
+    prefixes.forEach(prefix => {
+      patterns.push(`${prefix}%`); // 匹配以該前綴開頭的關鍵字
+    });
+  }
+  
+  // 也添加國家名稱本身的匹配（作為備用）
+  patterns.push(`%${country}%`);
+  
+  // 從 COUNTRY_KEYWORDS 中查找匹配的關鍵字
+  for (const [key, countryName] of Object.entries(COUNTRY_KEYWORDS)) {
+    if (countryName === country || countryName.toLowerCase() === country.toLowerCase()) {
+      patterns.push(`${key}%`); // 匹配以該關鍵字開頭的
+      patterns.push(`%${key}%`); // 匹配包含該關鍵字的
+    }
+  }
+  
+  // 去重
+  return [...new Set(patterns)];
+}

@@ -10,6 +10,8 @@
     "server:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "train": "ts-node src/train.ts",
     "train:continue": "ts-node src/train.ts --continue",
+    "train:prepare": "ts-node src/prepare-dataset.ts",
+    "train:status": "ts-node src/check-training-status.ts",
     "scrape": "ts-node src/index.ts --scrape",
     "download": "ts-node src/index.ts --download",
     "process": "ts-node src/index.ts --process",

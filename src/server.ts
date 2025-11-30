@@ -27,6 +27,8 @@ import {
   isModelAvailable,
   getModelInfo,
 } from "./classifier";
+import { db } from "./db";
+import { getCountryFromKeyword } from "./config";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -151,10 +153,71 @@ interface ImageInfo {
   apiUrl?: string; // 備用 API 端點
 }
 
+// 調試：獲取資料庫中的標籤統計
+app.get("/api/debug/review-stats", async (req, res) => {
+  try {
+    // 總體統計
+    const overallStats = db.prepare(`
+      SELECT 
+        i.keyword as country,
+        il.is_manual,
+        il.reviewed,
+        COUNT(*) as count
+      FROM image_labels il
+      JOIN images i ON il.image_id = i.id
+      GROUP BY i.keyword, il.is_manual, il.reviewed
+      ORDER BY i.keyword, il.is_manual, il.reviewed
+    `).all() as any[];
+    
+    // 未審核的 AI 標籤詳情
+    const unreviewedAI = db.prepare(`
+      SELECT 
+        i.id as image_id,
+        i.keyword as country,
+        i.file_name,
+        il.label,
+        il.confidence,
+        il.reviewed,
+        il.is_manual
+      FROM image_labels il
+      JOIN images i ON il.image_id = i.id
+      WHERE il.reviewed = 0 AND il.is_manual = 0
+      LIMIT 20
+    `).all() as any[];
+    
+    // 所有唯一的關鍵字（用於檢查國家名稱）
+    const allKeywords = db.prepare(`
+      SELECT DISTINCT keyword, COUNT(*) as image_count
+      FROM images
+      WHERE keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword
+      ORDER BY keyword
+    `).all() as any[];
+    
+    res.json({
+      success: true,
+      overallStats,
+      unreviewedAI: {
+        count: unreviewedAI.length,
+        samples: unreviewedAI
+      },
+      allKeywords,
+      totalStats: overallStats.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "未知錯誤"
+    });
+  }
+});
+
 // 獲取需要審核的圖片列表（用於審核模式）
 app.get("/api/images/review", async (req, res) => {
   try {
     const { country, filterType = "ai" } = req.query;
+
+    console.log(`🔍 審核模式查詢 - 國家: ${country || 'all'}, 類型: ${filterType}`);
 
     // 獲取需要審核的圖片
     const reviewImages = getImagesForReview(
@@ -162,20 +225,22 @@ app.get("/api/images/review", async (req, res) => {
       filterType as "ai" | "manual" | "all"
     );
 
+    console.log(`📊 獲取到 ${reviewImages.length} 張需要審核的圖片`);
+
     // 轉換為前端需要的格式
     const images: ImageInfo[] = reviewImages.map((img) => {
-      // 解析 filePath 獲取 country 和 filename
-      const parts = img.filePath.split("/");
-      const filename = parts.pop() || img.filename;
-      const imgCountry = parts[0] || img.country;
+      // img.country 現在已經是實際的國家名稱（不是關鍵字）
+      // img.filename 現在已經是正確的文件名
+      const imgCountry = img.country || '';
+      const filename = img.filename || path.basename(img.filePath);
 
       return {
         id: `${imgCountry}_${filename}`,
-        country: imgCountry || img.country,
-        filename: filename,
+        country: imgCountry, // 使用實際的國家名稱
+        filename: filename, // 使用正確的文件名
         path: img.filePath,
         url: `/images/${img.filePath}`,
-        apiUrl: `/api/image-file/${imgCountry || img.country}/${filename}`,
+        apiUrl: `/api/image-file/${imgCountry}/${filename}`,
       };
     });
 
@@ -499,6 +564,58 @@ app.post("/api/images/:imageId/classify", async (req, res) => {
 // 獲取所有國家列表
 app.get("/api/countries", async (req, res) => {
   try {
+    const { mode, filterType } = req.query;
+    
+    // 如果是審核模式，從資料庫中獲取有未審核標籤的國家
+    if (mode === 'review') {
+      const filterTypeValue = (filterType as string) || 'ai';
+      
+      // 構建查詢：獲取有未審核標籤的國家
+      let query = `
+        SELECT DISTINCT
+          i.keyword,
+          COUNT(DISTINCT il.image_id) as count
+        FROM image_labels il
+        JOIN images i ON il.image_id = i.id
+        WHERE il.reviewed = 0
+      `;
+      
+      const params: any[] = [];
+      
+      if (filterTypeValue === 'ai') {
+        query += ' AND il.is_manual = 0';
+      } else if (filterTypeValue === 'manual') {
+        query += ' AND il.is_manual = 1';
+      }
+      
+      query += ' GROUP BY i.keyword ORDER BY i.keyword';
+      
+      const stmt = db.prepare(query);
+      const rows = stmt.all(...params) as any[];
+      
+      // 將關鍵字轉換為國家名稱，並統計數量
+      const countryMap = new Map<string, number>();
+      
+      rows.forEach(row => {
+        const country = getCountryFromKeyword(row.keyword || '');
+        const currentCount = countryMap.get(country) || 0;
+        countryMap.set(country, currentCount + (row.count || 0));
+      });
+      
+      // 轉換為數組格式
+      const countriesWithCount = Array.from(countryMap.entries()).map(([name, count]) => ({
+        name,
+        count
+      }));
+      
+      return res.json({
+        success: true,
+        countries: countriesWithCount,
+        total: countriesWithCount.length,
+      });
+    }
+    
+    // 標註模式：從文件系統獲取
     const countries = fs.readdirSync(imagesDir).filter((item) => {
       const itemPath = path.join(imagesDir, item);
       return fs.statSync(itemPath).isDirectory();
@@ -517,16 +634,10 @@ app.get("/api/countries", async (req, res) => {
       };
     });
 
-    // 添加「其他」選項
-    countriesWithCount.push({
-      name: "其他",
-      count: 0,
-    });
-
     res.json({
       success: true,
       countries: countriesWithCount,
-      total: countries.length + 1,
+      total: countries.length,
     });
   } catch (error) {
     console.error("獲取國家列表失敗:", error);

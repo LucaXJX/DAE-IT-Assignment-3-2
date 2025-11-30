@@ -7,10 +7,10 @@ let state = {
   filteredImages: [],
   currentIndex: 0,
   countries: [],
-  selectedCountry: 'all',
+  selectedCountry: null,
   labels: {}, // imageId -> labels
   mode: 'labeling', // 'labeling' 或 'review'
-  reviewFilter: 'ai', // 'ai', 'manual', 'all'
+  reviewFilter: 'ai', // 'ai', 'manual'
   selectedLabelId: null, // 審核模式下選中的標籤ID
   lastAIPrediction: null // 最新的 AI 預測結果（用於自動保存）
 };
@@ -22,7 +22,7 @@ let elements = {};
 function initElements() {
   elements = {
     countriesList: document.getElementById('countries-list'),
-    totalCount: document.getElementById('total-count'),
+    totalCount: null, // 已移除，不再使用
     labeledCount: document.getElementById('labeled-count'),
     unlabeledCount: document.getElementById('unlabeled-count'),
     currentImage: document.getElementById('current-image'),
@@ -46,7 +46,8 @@ function initElements() {
     reviewLabels: document.getElementById('review-labels'),
     reviewCorrectBtn: document.getElementById('review-correct-btn'),
     reviewDeleteBtn: document.getElementById('review-delete-btn'),
-    reviewAddLabelBtn: document.getElementById('review-add-label-btn')
+    reviewAddLabelBtn: document.getElementById('review-add-label-btn'),
+    reviewLabelRadioGroup: document.getElementById('review-label-radio-group')
   };
   
   // 檢查關鍵元素是否存在
@@ -90,28 +91,49 @@ async function init() {
 // 載入國家列表
 async function loadCountries() {
   try {
-    const response = await fetch(`${API_BASE}/api/countries`);
+    // 根據模式選擇不同的查詢參數
+    const mode = state.mode || 'labeling';
+    const filterType = state.reviewFilter || 'ai';
+    const url = mode === 'review' 
+      ? `${API_BASE}/api/countries?mode=review&filterType=${filterType}`
+      : `${API_BASE}/api/countries`;
+    
+    const response = await fetch(url);
     const data = await response.json();
     
     if (data.success) {
       state.countries = data.countries;
       
+      // 清空現有的國家列表按鈕（避免重複添加）
+      elements.countriesList.innerHTML = '';
+      
       // 更新國家列表 UI
-      data.countries.forEach(country => {
+      data.countries.forEach((country, index) => {
         const btn = document.createElement('button');
         btn.className = 'country-btn';
         btn.dataset.country = country.name;
         btn.textContent = `${country.name} (${country.count})`;
         btn.addEventListener('click', () => filterByCountry(country.name));
         elements.countriesList.appendChild(btn);
+        
+        // 自動選中第一個國家（如果還沒有選中任何國家）
+        // 注意：實際篩選會在 loadImages 完成後進行
+        if (index === 0 && !state.selectedCountry && state.mode === 'labeling') {
+          btn.classList.add('active');
+          state.selectedCountry = country.name;
+        }
       });
       
       // 更新標籤單選按鈕組
       updateLabelRadioGroup(data.countries);
       
-      // 更新總數
-      const total = data.countries.reduce((sum, c) => sum + c.count, 0);
-      elements.totalCount.textContent = total;
+      // 如果是審核模式，也更新審核模式的標籤單選按鈕組
+      // 但需要載入所有國家（用於標籤選擇），而不僅僅是有未審核標籤的國家
+      if (state.mode === 'review') {
+        loadAllCountriesForLabels();
+      }
+      
+      // 注意：總數統計在 updateStats() 函數中處理，這裡不需要單獨設置
     }
   } catch (error) {
     console.error('載入國家列表失敗:', error);
@@ -145,6 +167,67 @@ function updateLabelRadioGroup(countries) {
   });
 }
 
+// 載入所有國家列表（用於標籤選擇器）
+async function loadAllCountriesForLabels() {
+  try {
+    // 載入所有國家（不帶 mode 參數）
+    const response = await fetch(`${API_BASE}/api/countries`);
+    const data = await response.json();
+    
+    if (data.success && elements.reviewLabelRadioGroup) {
+      updateReviewLabelRadioGroup(data.countries);
+    }
+  } catch (error) {
+    console.error('載入所有國家列表失敗:', error);
+  }
+}
+
+// 更新審核模式的標籤單選按鈕組
+function updateReviewLabelRadioGroup(countries) {
+  if (!elements.reviewLabelRadioGroup) return;
+  
+  elements.reviewLabelRadioGroup.innerHTML = '';
+  
+  countries.forEach(country => {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'review-label';
+    radio.id = `review-label-${country.name}`;
+    radio.value = country.name;
+    
+    const label = document.createElement('label');
+    label.htmlFor = `review-label-${country.name}`;
+    label.textContent = country.name;
+    
+    radioItem.appendChild(radio);
+    radioItem.appendChild(label);
+    elements.reviewLabelRadioGroup.appendChild(radioItem);
+  });
+  
+  // 添加「其他」選項
+  const otherRadioItem = document.createElement('div');
+  otherRadioItem.className = 'radio-item';
+  
+  const otherRadio = document.createElement('input');
+  otherRadio.type = 'radio';
+  otherRadio.name = 'review-label';
+  otherRadio.id = 'review-label-其他';
+  otherRadio.value = '其他';
+  
+  const otherLabel = document.createElement('label');
+  otherLabel.htmlFor = 'review-label-其他';
+  otherLabel.textContent = '其他';
+  
+  otherRadioItem.appendChild(otherRadio);
+  otherRadioItem.appendChild(otherLabel);
+  elements.reviewLabelRadioGroup.appendChild(otherRadioItem);
+  
+  console.log(`✅ 已更新審核模式標籤選擇器，共 ${countries.length + 1} 個選項（包含「其他」）`);
+}
+
 // 載入圖片列表
 async function loadImages() {
   try {
@@ -154,9 +237,23 @@ async function loadImages() {
     
     if (data.success) {
       state.images = data.images;
-      state.filteredImages = data.images;
+      
+      // 如果是標註模式，過濾掉已標註的圖片
+      if (state.mode === 'labeling') {
+        state.filteredImages = await filterUnlabeledImages(data.images);
+      } else {
+        state.filteredImages = data.images;
+      }
+      
       state.currentIndex = 0;
-      updateUI();
+      
+      // 如果已經選中了一個國家（在載入國家列表時），現在進行篩選
+      if (state.selectedCountry && state.mode === 'labeling') {
+        await filterByCountry(state.selectedCountry);
+      } else {
+        updateUI();
+        await updateStats();
+      }
     }
   } catch (error) {
     console.error('載入圖片失敗:', error);
@@ -177,37 +274,6 @@ async function filterByCountry(country) {
     btn.classList.toggle('active', btnCountry === country);
   });
   
-  // 如果選擇「其他」，需要從 API 重新載入
-  if (country === '其他') {
-    try {
-      showLoading(true);
-      const response = await fetch(`${API_BASE}/api/images?label=其他`);
-      const data = await response.json();
-      
-      if (data.success) {
-        state.filteredImages = data.images;
-        console.log(`顯示「其他」標籤的圖片，總數:`, state.filteredImages.length);
-        
-        state.currentIndex = 0;
-        updateUI();
-      }
-    } catch (error) {
-      console.error('載入「其他」標籤圖片失敗:', error);
-      showError('載入圖片失敗');
-      state.filteredImages = [];
-    } finally {
-      showLoading(false);
-    }
-    return;
-  }
-  
-  // 篩選圖片
-  let filtered = [];
-  if (country === 'all') {
-    filtered = state.images;
-  } else {
-    filtered = state.images.filter(img => img.country === country);
-  }
   
   // 如果處於審核模式，從服務器端獲取需要審核的圖片
   if (state.mode === 'review') {
@@ -219,19 +285,76 @@ async function filterByCountry(country) {
     return; // 提前返回，等待異步完成
   }
   
-  state.filteredImages = filtered;
-  console.log(`顯示圖片，總數:`, state.filteredImages.length);
+  // 標註模式：只顯示未標註的圖片
+  try {
+    showLoading(true);
+    
+    let filtered = [];
+    if (country) {
+      filtered = state.images.filter(img => img.country === country);
+    } else {
+      filtered = state.images;
+    }
+    
+    // 過濾掉已標註的圖片
+    filtered = await filterUnlabeledImages(filtered);
+    
+    state.filteredImages = filtered;
+    console.log(`顯示未標註圖片，總數:`, state.filteredImages.length);
+    
+    state.currentIndex = 0;
+    updateUI();
+    await updateStats(); // 更新統計
+  } catch (error) {
+    console.error('篩選圖片失敗:', error);
+    showError('篩選圖片失敗');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 過濾未標註的圖片
+async function filterUnlabeledImages(images) {
+  if (images.length === 0) return [];
   
-  state.currentIndex = 0;
-  updateUI();
+  // 批量檢查圖片是否有標籤
+  const unlabeledImages = [];
+  
+  // 分批檢查，避免過多的API請求
+  const batchSize = 20;
+  for (let i = 0; i < images.length; i += batchSize) {
+    const batch = images.slice(i, i + batchSize);
+    
+    // 並行檢查這批圖片
+    const checks = await Promise.all(
+      batch.map(async (img) => {
+        try {
+          const response = await fetch(`${API_BASE}/api/images/${img.id}/labels`);
+          const data = await response.json();
+          
+          // 如果沒有標籤或標籤數量為0，則認為未標註
+          return !data.success || !data.labels || data.labels.length === 0;
+        } catch (error) {
+          console.error(`檢查圖片 ${img.id} 標籤失敗:`, error);
+          // 如果檢查失敗，保守處理，認為未標註
+          return true;
+        }
+      })
+    );
+    
+    // 添加未標註的圖片
+    batch.forEach((img, idx) => {
+      if (checks[idx]) {
+        unlabeledImages.push(img);
+      }
+    });
+  }
+  
+  return unlabeledImages;
 }
 
 // 根據審核條件篩選圖片（同步版本，只使用已載入的標籤）
 function filterImagesByReview(images) {
-  if (state.reviewFilter === 'all') {
-    return images;
-  }
-  
   // 需要檢查每張圖片是否有符合條件的標籤
   // 為了效率，我們只檢查已經載入的標籤
   const filtered = [];
@@ -256,10 +379,6 @@ function filterImagesByReview(images) {
 
 // 異步載入標籤並篩選圖片
 async function filterImagesByReviewAsync(images) {
-  if (state.reviewFilter === 'all') {
-    return images;
-  }
-  
   // 先使用已載入的標籤進行篩選
   let filtered = filterImagesByReview(images);
   
@@ -317,6 +436,15 @@ function updateUI() {
     // 設置錯誤處理器
     elements.currentImage.onerror = function() {
       const currentSrc = this.src;
+      
+      // 忽略瀏覽器擴展導致的錯誤（通常是chrome-extension://或moz-extension://）
+      if (currentSrc.startsWith('chrome-extension://') || 
+          currentSrc.startsWith('moz-extension://') ||
+          currentSrc === '' || 
+          currentSrc === window.location.origin + '/') {
+        return; // 忽略這些錯誤
+      }
+      
       console.error('❌ 圖片加載失敗:', currentSrc);
       
       // 如果還沒有嘗試過備用方案，嘗試使用備用 API 端點
@@ -341,7 +469,11 @@ function updateUI() {
     };
     
     elements.currentImage.onload = function() {
-      console.log('✅ 圖片加載成功:', this.src);
+      // 只在非擴展URL時記錄成功
+      if (!this.src.startsWith('chrome-extension://') && 
+          !this.src.startsWith('moz-extension://')) {
+        console.log('✅ 圖片加載成功:', this.src);
+      }
       hasTriedFallback = false; // 重置標記
       showLoading(false);
     };
@@ -377,15 +509,23 @@ function updateUI() {
   if (elements.nextBtn) elements.nextBtn.disabled = state.currentIndex === state.filteredImages.length - 1;
   
   // 載入當前圖片的標籤
-  loadCurrentImageLabels();
+  if (state.mode === 'review') {
+    // 審核模式：先載入標籤，再顯示
+    loadCurrentImageLabels().then(async () => {
+      await displayReviewLabels();
+    });
+    
+    // 確保審核模式的標籤選擇器已載入
+    if (elements.reviewLabelRadioGroup && elements.reviewLabelRadioGroup.children.length === 0) {
+      loadAllCountriesForLabels();
+    }
+  } else {
+    // 標註模式：正常載入標籤
+    loadCurrentImageLabels();
+  }
   
   // 清空預測結果
   clearPredictions();
-  
-  // 根據模式更新UI
-  if (state.mode === 'review') {
-    displayReviewLabels();
-  }
 }
 
 // 載入當前圖片的標籤
@@ -399,11 +539,22 @@ async function loadCurrentImageLabels() {
     
     if (data.success) {
       state.labels[currentImage.id] = data.labels;
-      displayLabels(data.labels);
+      
+      // 標註模式下顯示標籤
+      if (state.mode === 'labeling') {
+        displayLabels(data.labels);
+      }
+      
+      return data.labels;
     }
   } catch (error) {
     console.error('載入標籤失敗:', error);
+    // 如果載入失敗，設置為空數組
+    state.labels[currentImage.id] = [];
+    return [];
   }
+  
+  return [];
 }
 
 // 顯示標籤
@@ -634,9 +785,6 @@ async function updateStats() {
   try {
     // 如果是審核模式，顯示當前篩選後的圖片數量
     if (state.mode === 'review') {
-      if (elements.totalCount) {
-        elements.totalCount.textContent = state.filteredImages.length;
-      }
       // 計算當前篩選後的已標註和未標註數量
       let labeledInFiltered = 0;
       for (const img of state.filteredImages) {
@@ -653,22 +801,19 @@ async function updateStats() {
       return; // 審核模式使用本地統計，不需要從 API 獲取
     }
     
-    // 標註模式：從 API 獲取真實統計數據
-    const response = await fetch(`${API_BASE}/api/stats/labels`);
-    const data = await response.json();
+    // 標註模式：統計當前篩選後未標註的圖片
+    // 統計當前篩選結果中的未標註圖片數量
+    const unlabeledCount = state.filteredImages.length; // 標註模式下filteredImages已經是未標註的圖片
+    const totalCount = state.mode === 'review' ? state.filteredImages.length : state.images.length;
     
-    if (data.success) {
-      const stats = data.stats;
-      if (elements.labeledCount) {
-        elements.labeledCount.textContent = stats.totalLabeled || 0;
-      }
-      if (elements.unlabeledCount) {
-        // 使用 API 返回的未標註數量
-        elements.unlabeledCount.textContent = stats.totalUnlabeled || 0;
-      }
-      if (elements.totalCount) {
-        elements.totalCount.textContent = stats.totalImages || state.images.length;
-      }
+    // 計算已標註的數量（總數 - 未標註數）
+    const labeledCount = Math.max(0, totalCount - unlabeledCount);
+    
+    if (elements.labeledCount) {
+      elements.labeledCount.textContent = labeledCount;
+    }
+    if (elements.unlabeledCount) {
+      elements.unlabeledCount.textContent = unlabeledCount;
     }
   } catch (error) {
     console.error('獲取統計失敗:', error);
@@ -677,22 +822,12 @@ async function updateStats() {
     const total = state.mode === 'review' ? state.filteredImages.length : state.images.length;
     if (elements.labeledCount) elements.labeledCount.textContent = labeled;
     if (elements.unlabeledCount) elements.unlabeledCount.textContent = Math.max(0, total - labeled);
-    if (elements.totalCount) elements.totalCount.textContent = total;
   }
 }
 
 // 事件監聽器設置
 function setupEventListeners() {
   console.log('🔧 設置事件監聽器...');
-  
-  // 為「全部」按鈕添加點擊事件
-  const allBtn = document.querySelector('.country-btn[data-country="all"]');
-  if (allBtn) {
-    allBtn.addEventListener('click', () => {
-      console.log('點擊全部按鈕');
-      filterByCountry('all');
-    });
-  }
   
   // 基本導航按鈕
   if (elements.prevBtn) {
@@ -759,10 +894,7 @@ function setupEventListeners() {
     elements.reviewDeleteBtn.addEventListener('click', deleteSelectedLabel);
   }
   if (elements.reviewAddLabelBtn) {
-    elements.reviewAddLabelBtn.addEventListener('click', () => {
-      switchMode('labeling');
-      // 觸發添加標籤流程
-    });
+    elements.reviewAddLabelBtn.addEventListener('click', saveReviewLabel);
   }
   
   // 鍵盤快捷鍵
@@ -823,14 +955,25 @@ function switchMode(mode) {
   
   // 根據模式更新UI
   if (mode === 'review') {
-    // 異步應用篩選，然後顯示標籤
-    applyReviewFilter().then(() => {
-      displayReviewLabels();
-      // 更新統計（審核模式下的分類數量）
-      updateStats();
+    // 重新載入國家列表（審核模式下顯示有未審核標籤的國家）
+    loadCountries().then(() => {
+      // 載入所有國家用於標籤選擇器
+      if (elements.reviewLabelRadioGroup) {
+        loadAllCountriesForLabels();
+      }
+      // 異步應用篩選，然後顯示標籤
+      applyReviewFilter().then(() => {
+        // 更新統計（審核模式下的分類數量）
+        updateStats();
+      });
     });
   } else {
-    updateUI();
+    // 標註模式：重新載入國家列表和未標註的圖片
+    loadCountries().then(() => {
+      loadImages().then(() => {
+        updateUI();
+      });
+    });
   }
 }
 
@@ -856,28 +999,29 @@ async function applyReviewFilter() {
     showLoading(true);
     
     // 從服務器端 API 獲取需要審核的圖片
-    const country = state.selectedCountry || 'all';
+    const country = state.selectedCountry || undefined; // 不傳'all'，傳undefined或國家名稱
     const filterType = state.reviewFilter || 'ai';
     
-    const response = await fetch(`${API_BASE}/api/images/review?country=${country}&filterType=${filterType}`);
+    // 構建查詢參數
+    let url = `${API_BASE}/api/images/review?filterType=${filterType}`;
+    if (country) {
+      url += `&country=${country}`;
+    }
+    
+    const response = await fetch(url);
     const data = await response.json();
     
     if (data.success) {
       state.filteredImages = data.images;
-      console.log(`✅ 獲取審核圖片成功，總數: ${state.filteredImages.length} (${filterType}, ${country})`);
+      console.log(`✅ 獲取審核圖片成功，總數: ${state.filteredImages.length} (${filterType}, ${country || '全部'})`);
       
       // 調整當前索引（確保不超出範圍）
       if (state.currentIndex >= state.filteredImages.length) {
         state.currentIndex = Math.max(0, state.filteredImages.length - 1);
       }
       
-      // 更新UI
+      // 更新UI（會自動載入標籤並顯示）
       updateUI();
-      
-      // 顯示審核標籤
-      if (state.mode === 'review') {
-        displayReviewLabels();
-      }
     } else {
       console.error('❌ 獲取審核圖片失敗:', data.error);
       showError(data.error || '獲取審核圖片失敗');
@@ -895,7 +1039,7 @@ async function applyReviewFilter() {
 }
 
 // 顯示審核標籤
-function displayReviewLabels(labels = null) {
+async function displayReviewLabels(labels = null) {
   if (!elements.reviewLabels) return;
   
   const currentImage = state.filteredImages[state.currentIndex];
@@ -906,22 +1050,40 @@ function displayReviewLabels(labels = null) {
   
   // 如果沒有傳入 labels，從 state 獲取
   if (!labels) {
-    labels = state.labels[currentImage.id] || [];
+    // 如果標籤還沒有載入，先嘗試載入
+    if (!state.labels[currentImage.id]) {
+      labels = await loadCurrentImageLabels() || [];
+    } else {
+      labels = state.labels[currentImage.id] || [];
+    }
     
     // 應用篩選
     if (state.reviewFilter === 'ai') {
-      labels = labels.filter(l => !l.isManual);
+      labels = labels.filter(l => !l.isManual && !l.reviewed);
     } else if (state.reviewFilter === 'manual') {
-      labels = labels.filter(l => l.isManual);
+      labels = labels.filter(l => l.isManual && !l.reviewed);
+    } else {
+      // 如果沒有篩選，只顯示未審核的標籤
+      labels = labels.filter(l => !l.reviewed);
     }
   }
   
   elements.reviewLabels.innerHTML = '';
   
   if (labels.length === 0) {
-    elements.reviewLabels.innerHTML = '<p class="empty-state">沒有符合條件的標籤</p>';
+    elements.reviewLabels.innerHTML = '<p class="empty-state">沒有符合條件的標籤（可能需要載入標籤，請稍候...）</p>';
     if (elements.reviewCorrectBtn) elements.reviewCorrectBtn.style.display = 'none';
     if (elements.reviewDeleteBtn) elements.reviewDeleteBtn.style.display = 'none';
+    
+    // 如果標籤為空，嘗試重新載入
+    if (!state.labels[currentImage.id]) {
+      setTimeout(async () => {
+        const loadedLabels = await loadCurrentImageLabels();
+        if (loadedLabels && loadedLabels.length > 0) {
+          await displayReviewLabels();
+        }
+      }, 500);
+    }
     return;
   }
   
@@ -994,7 +1156,7 @@ async function markLabelAsReviewed() {
     if (data.success) {
       // 重新載入標籤
       await loadCurrentImageLabels();
-      displayReviewLabels();
+      await displayReviewLabels();
       
       // 隱藏按鈕
       if (elements.reviewCorrectBtn) elements.reviewCorrectBtn.style.display = 'none';
@@ -1007,6 +1169,90 @@ async function markLabelAsReviewed() {
   } catch (error) {
     console.error('標記審核失敗:', error);
     showError('標記審核失敗');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 在審核模式下保存標籤（添加/更正標籤）
+async function saveReviewLabel() {
+  const currentImage = state.filteredImages[state.currentIndex];
+  if (!currentImage) {
+    alert('請先選擇一張圖片');
+    return;
+  }
+  
+  // 從選中的 radio button 獲取標籤
+  const selectedRadio = document.querySelector('input[name="review-label"]:checked');
+  if (!selectedRadio) {
+    alert('請選擇一個標籤');
+    return;
+  }
+  
+  const label = selectedRadio.value;
+  console.log(`💾 在審核模式下保存標籤: ${label} 到圖片 ${currentImage.id}`);
+  
+  try {
+    showLoading(true);
+    
+    // 保存新標籤（手動標註，已審核）
+    const response = await fetch(`${API_BASE}/api/images/${currentImage.id}/label`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        label: label,
+        isManual: true,
+        confidence: 1.0
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: '未知錯誤' }));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log('✅ 標籤保存成功:', data);
+      
+      // 如果之前選中了錯誤的標籤，自動刪除它（因為已經添加了正確的標籤）
+      if (state.selectedLabelId) {
+        try {
+          await deleteSelectedLabel();
+          // 注意：deleteSelectedLabel 已經處理了狀態更新，這裡不需要重複
+        } catch (error) {
+          console.error('刪除舊標籤失敗:', error);
+          // 即使刪除失敗，新標籤已經保存成功，所以繼續
+        }
+      }
+      
+      // 重新載入標籤和圖片列表（因為標籤狀態改變了）
+      await loadCurrentImageLabels();
+      await displayReviewLabels();
+      
+      // 清空選擇
+      if (selectedRadio) {
+        selectedRadio.checked = false;
+      }
+      state.selectedLabelId = null;
+      
+      // 重新應用篩選（因為這張圖片可能已經從未審核列表中移除）
+      await applyReviewFilter();
+      
+      // 更新統計
+      await updateStats();
+      
+      showSuccess('標籤已保存並標記為已審核');
+    } else {
+      console.error('❌ 保存失敗:', data.error);
+      showError(data.error || '保存失敗');
+    }
+  } catch (error) {
+    console.error('❌ 保存標籤失敗:', error);
+    showError(`保存標籤失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
   } finally {
     showLoading(false);
   }
@@ -1037,7 +1283,7 @@ async function deleteSelectedLabel() {
     if (data.success) {
       // 重新載入標籤
       await loadCurrentImageLabels();
-      displayReviewLabels();
+      await displayReviewLabels();
       
       // 更新統計
       await updateStats();

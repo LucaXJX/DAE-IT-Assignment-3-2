@@ -230,22 +230,36 @@ async function prepareTrainingData(
   // 載入所有圖片
   const tensors: tf.Tensor4D[] = [];
   let loaded = 0;
+  const total = allImages.length;
+  const startTime = Date.now();
 
-  for (const imagePath of allImages) {
+  console.log(`   📥 開始載入 ${total} 張圖片（這可能需要幾分鐘）...\n`);
+
+  for (let i = 0; i < allImages.length; i++) {
+    const imagePath = allImages[i];
     try {
       const tensor = await loadImageAsTensor(imagePath, IMAGE_SIZE);
       tensors.push(tensor);
       loaded++;
 
-      if (loaded % 10 === 0) {
-        process.stdout.write(`   已載入: ${loaded}/${allImages.length}\r`);
+      // 每 5 張或每 10% 輸出一次進度
+      if (loaded % 5 === 0 || loaded % Math.max(1, Math.floor(total / 10)) === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const percentage = ((loaded / total) * 100).toFixed(1);
+        const estimated = total > loaded 
+          ? ((Date.now() - startTime) / loaded * (total - loaded) / 1000).toFixed(1)
+          : '0';
+        process.stdout.write(
+          `   📥 載入進度: ${loaded}/${total} (${percentage}%) | 已用時: ${elapsed}s | 預計剩餘: ${estimated}s\r`
+        );
       }
     } catch (error) {
-      console.warn(`\n   跳過圖片: ${imagePath}`);
+      console.warn(`\n   ⚠️  跳過圖片: ${imagePath} - ${error instanceof Error ? error.message : error}`);
     }
   }
 
-  console.log(`\n   ✅ 成功載入 ${loaded} 張圖片\n`);
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`\n   ✅ 成功載入 ${loaded}/${total} 張圖片（耗時 ${elapsed} 秒）\n`);
 
   // 合併為批次
   const xs = tf.concat(tensors, 0) as tf.Tensor4D;
@@ -285,6 +299,16 @@ async function trainModel(
     metrics: ["accuracy"],
   });
 
+  // 計算批次數（用於進度顯示）
+  const totalSamples = xs.shape[0];
+  const trainingSamples = Math.floor(totalSamples * 0.8); // 80% 用於訓練
+  const batchesPerEpoch = Math.ceil(trainingSamples / batchSize);
+
+  console.log(`   總樣本數: ${totalSamples}`);
+  console.log(`   訓練樣本: ${trainingSamples} (80%)`);
+  console.log(`   驗證樣本: ${totalSamples - trainingSamples} (20%)`);
+  console.log(`   每個 epoch 的批次數: ${batchesPerEpoch}\n`);
+
   // 訓練模型
   const history = await model.fit(xs, ys, {
     epochs,
@@ -292,6 +316,25 @@ async function trainModel(
     shuffle: true,
     validationSplit: 0.2, // 20% 用於驗證
     callbacks: {
+      onEpochBegin: (epoch: number) => {
+        console.log(`\n📊 Epoch ${epoch + 1}/${epochs} 開始...`);
+      },
+      onBatchEnd: (batch: number, logs?: any) => {
+        // 每 2 個批次或每 25% 進度輸出一次
+        const shouldLog = 
+          batch % 2 === 0 || 
+          batch === 0 ||
+          batch % Math.max(1, Math.floor(batchesPerEpoch / 4)) === 0 ||
+          batch === batchesPerEpoch - 1;
+        
+        if (shouldLog && logs) {
+          const loss = logs.loss ? Number(logs.loss).toFixed(4) : "N/A";
+          const percentage = ((batch + 1) / batchesPerEpoch * 100).toFixed(1);
+          process.stdout.write(
+            `   Batch ${batch + 1}/${batchesPerEpoch} (${percentage}%) - loss: ${loss}\r`
+          );
+        }
+      },
       onEpochEnd: (epoch: number, logs?: any) => {
         const loss = logs?.loss ? Number(logs.loss).toFixed(4) : "N/A";
         const acc = logs?.acc ? Number(logs.acc).toFixed(4) : "N/A";
@@ -300,7 +343,7 @@ async function trainModel(
           : "N/A";
         const valAcc = logs?.val_acc ? Number(logs.val_acc).toFixed(4) : "N/A";
         console.log(
-          `   Epoch ${epoch + 1}/${epochs} - ` +
+          `\n   ✅ Epoch ${epoch + 1}/${epochs} 完成 - ` +
             `loss: ${loss} - ` +
             `acc: ${acc} - ` +
             `val_loss: ${valLoss} - ` +
@@ -405,15 +448,22 @@ async function saveModelManually(
 }
 
 /**
- * 嘗試載入已訓練的模型
+ * 嘗試載入已訓練的模型（使用手動載入方式）
  */
 async function tryLoadExistingModel(
   modelDir: string
 ): Promise<tf.LayersModel | null> {
   const modelJsonPath = path.join(modelDir, "model.json");
+  const weightsManifestPath = path.join(modelDir, "weights-manifest.json");
+  const classNamesPath = path.join(modelDir, "classNames.json");
 
   if (!fs.existsSync(modelJsonPath)) {
     console.log("   ℹ️  未找到已有模型文件（model.json 不存在）");
+    return null;
+  }
+
+  if (!fs.existsSync(weightsManifestPath)) {
+    console.log("   ℹ️  未找到權重清單文件（weights-manifest.json 不存在）");
     return null;
   }
 
@@ -421,14 +471,137 @@ async function tryLoadExistingModel(
     console.log("📦 檢測到已有模型，嘗試載入...");
     console.log(`   模型路徑: ${modelJsonPath}`);
 
-    // 嘗試載入模型（TensorFlow.js 會自動處理權重文件）
-    const model = await tf.loadLayersModel(`file://${modelJsonPath}`);
-    console.log("   ✅ 模型載入成功");
-    return model;
+    // 首先嘗試標準方式載入
+    try {
+      const model = await tf.loadLayersModel(`file://${modelJsonPath}`);
+      console.log("   ✅ 使用標準方式載入模型成功");
+      return model;
+    } catch (standardError: any) {
+      console.log("   ⚠️  標準載入方式失敗，嘗試手動載入方式...");
+      console.log(`   錯誤: ${standardError.message || standardError}`);
+      
+      // 使用手動載入方式
+      return await loadModelManuallyForTraining(modelDir);
+    }
   } catch (error: any) {
     console.log("   ⚠️  模型載入失敗:", error.message || error);
-    console.log("   💡 提示：這可能是因為模型保存格式不兼容，將使用全新訓練");
+    console.log("   💡 提示：將使用全新訓練");
     return null;
+  }
+}
+
+/**
+ * 手動載入模型（從手動保存的文件）- 訓練時使用
+ */
+async function loadModelManuallyForTraining(
+  modelDir: string
+): Promise<tf.LayersModel> {
+  const modelJsonPath = path.join(modelDir, "model.json");
+  const weightsManifestPath = path.join(modelDir, "weights-manifest.json");
+
+  try {
+    console.log("   開始手動載入模型結構和權重...");
+    
+    // 1. 載入模型結構
+    const modelJsonContent = fs.readFileSync(modelJsonPath, "utf-8");
+    let modelJson: any;
+    try {
+      modelJson = JSON.parse(modelJsonContent);
+      if (typeof modelJson === "string") {
+        modelJson = JSON.parse(modelJson);
+      }
+    } catch (error) {
+      throw new Error(`無法解析模型 JSON 文件: ${error instanceof Error ? error.message : "未知錯誤"}`);
+    }
+    
+    // 2. 載入權重清單
+    const weightManifest: Array<{
+      name: string;
+      shape: (number | null)[];
+      dtype: string;
+    }> = JSON.parse(fs.readFileSync(weightsManifestPath, "utf-8"));
+    
+    console.log(`   📦 開始載入 ${weightManifest.length} 個權重...`);
+
+    // 3. 載入所有權重
+    const weightTensors: tf.Tensor[] = [];
+    for (const item of weightManifest) {
+      const weightName = item.name.replace(/\//g, "_").replace(/:/g, "_");
+      const weightPath = path.join(modelDir, `${weightName}.bin`);
+      
+      if (!fs.existsSync(weightPath)) {
+        throw new Error(`權重文件不存在: ${weightPath}`);
+      }
+
+      const buffer = fs.readFileSync(weightPath);
+      const values = new Float32Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength / Float32Array.BYTES_PER_ELEMENT
+      );
+      
+      const validShape = item.shape.filter((s): s is number => s !== null) as number[];
+      const tensor = tf.tensor(values, validShape, item.dtype as tf.DataType);
+      weightTensors.push(tensor);
+    }
+    
+    console.log("   ✅ 所有權重載入成功");
+
+    // 4. 構建完整的權重數據緩衝區
+    console.log("   🔧 構建權重數據緩衝區...");
+    let totalSize = 0;
+    const weightOffsets: number[] = [];
+    
+    for (let i = 0; i < weightTensors.length; i++) {
+      weightOffsets.push(totalSize);
+      const shape = weightTensors[i].shape;
+      const size = shape.reduce((a, b) => a * b, 1) * 4; // Float32 = 4 bytes
+      totalSize += size;
+    }
+    
+    const weightDataBuffer = new ArrayBuffer(totalSize);
+    const weightDataView = new Float32Array(weightDataBuffer);
+    
+    for (let i = 0; i < weightTensors.length; i++) {
+      const tensor = weightTensors[i];
+      const values = await tensor.array();
+      const flattened = (values as any).flat(Infinity) as number[];
+      weightDataView.set(flattened, weightOffsets[i] / 4);
+    }
+    
+    console.log("   ✅ 權重數據緩衝區構建完成");
+
+    // 5. 從 JSON 創建模型結構
+    type DataType = "string" | "float32" | "int32" | "bool" | "complex64";
+    const weightSpecs: tf.io.WeightsManifestEntry[] = weightManifest.map(item => {
+      const entry: tf.io.WeightsManifestEntry = {
+        name: item.name,
+        shape: item.shape.filter((s): s is number => s !== null) as number[],
+        dtype: item.dtype as DataType,
+      };
+      return entry;
+    });
+    
+    const customIOHandler: tf.io.IOHandler = {
+      load: async () => {
+        return {
+          modelTopology: modelJson,
+          weightSpecs: weightSpecs,
+          weightData: weightDataBuffer,
+        };
+      },
+    };
+    
+    const model = await tf.loadLayersModel(customIOHandler);
+    console.log("   ✅ 使用手動載入方式載入模型成功");
+    
+    // 清理臨時權重 tensor
+    weightTensors.forEach(t => t.dispose());
+
+    return model;
+  } catch (error: any) {
+    console.error("   ❌ 手動載入模型失敗:", error);
+    throw new Error(`無法手動載入模型: ${error.message || error}`);
   }
 }
 
@@ -488,7 +661,31 @@ async function train(continueTraining: boolean = false) {
       const existingModel = await tryLoadExistingModel(classifierModelDir);
       if (existingModel) {
         console.log("✅ 成功載入已有模型，將繼續訓練\n");
-        classifier = existingModel;
+        
+        // 檢查模型輸出層的類別數量是否匹配
+        const modelOutputShape = existingModel.outputs[0].shape;
+        const modelNumClasses = modelOutputShape && modelOutputShape.length > 0 
+          ? modelOutputShape[modelOutputShape.length - 1] 
+          : null;
+        
+        if (modelNumClasses && modelNumClasses !== classNames.length) {
+          console.warn(`⚠️  警告：已載入的模型有 ${modelNumClasses} 個類別，但數據集中有 ${classNames.length} 個類別`);
+          console.warn(`   將創建新模型以匹配新的類別數量\n`);
+          
+          // 如果類別數量不匹配，創建新模型
+          const baseModel = await loadMobileNet(baseModelDir);
+          classifier = createClassifier(baseModel, classNames.length);
+          
+          const baseModelName = baseModel.name || "MobileNet";
+          if (logger) {
+            logger.updateMetadata({
+              baseModel: baseModelName,
+              featureExtractor: "reshape_1 (1024 dim)",
+            });
+          }
+        } else {
+          classifier = existingModel;
+        }
       } else {
         console.log("⚠️  無法載入已有模型，將創建新模型\n");
         // 載入基礎模型並創建新分類器
