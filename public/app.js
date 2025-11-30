@@ -1015,10 +1015,15 @@ async function applyReviewFilter() {
       state.filteredImages = data.images;
       console.log(`✅ 獲取審核圖片成功，總數: ${state.filteredImages.length} (${filterType}, ${country || '全部'})`);
       
-      // 調整當前索引（確保不超出範圍）
-      if (state.currentIndex >= state.filteredImages.length) {
+      // 調整當前索引
+      if (state.filteredImages.length === 0) {
+        // 沒有圖片了
+        state.currentIndex = 0;
+      } else if (state.currentIndex >= state.filteredImages.length) {
+        // 如果索引超出範圍（例如：當前是第5張，但列表只剩3張），調整到最後一張
         state.currentIndex = Math.max(0, state.filteredImages.length - 1);
       }
+      // 如果索引還在範圍內，保持不變（這樣當前的圖片被移除後，下一張會自動顯示）
       
       // 更新UI（會自動載入標籤並顯示）
       updateUI();
@@ -1154,15 +1159,22 @@ async function markLabelAsReviewed() {
     const data = await response.json();
     
     if (data.success) {
-      // 重新載入標籤
-      await loadCurrentImageLabels();
-      await displayReviewLabels();
+      showSuccess('標籤已標記為已審核');
       
-      // 隱藏按鈕
-      if (elements.reviewCorrectBtn) elements.reviewCorrectBtn.style.display = 'none';
+      // 清空選擇
       state.selectedLabelId = null;
       
-      showSuccess('標籤已標記為已審核');
+      // 重新載入審核圖片列表（因為這張圖片已被標記為已審核，會從列表中移除）
+      // applyReviewFilter 會自動調整索引並更新 UI
+      // 如果當前圖片被移除，下一張會自動顯示（因為索引保持不變，列表已更新）
+      await applyReviewFilter();
+      
+      // 檢查是否還有需要審核的圖片
+      if (state.filteredImages.length === 0) {
+        if (elements.reviewLabels) {
+          elements.reviewLabels.innerHTML = '<p class="empty-state">✅ 所有圖片已審核完成！</p>';
+        }
+      }
     } else {
       showError(data.error || '操作失敗');
     }
@@ -1221,17 +1233,21 @@ async function saveReviewLabel() {
       // 如果之前選中了錯誤的標籤，自動刪除它（因為已經添加了正確的標籤）
       if (state.selectedLabelId) {
         try {
-          await deleteSelectedLabel();
-          // 注意：deleteSelectedLabel 已經處理了狀態更新，這裡不需要重複
+          // 直接刪除，不使用 deleteSelectedLabel 因為它會重新載入整個列表
+          const deleteResponse = await fetch(`${API_BASE}/api/images/${currentImage.id}/labels/${state.selectedLabelId}`, {
+            method: 'DELETE'
+          });
+          const deleteData = await deleteResponse.json();
+          if (deleteData.success) {
+            console.log('✅ 舊標籤已刪除');
+          }
         } catch (error) {
           console.error('刪除舊標籤失敗:', error);
           // 即使刪除失敗，新標籤已經保存成功，所以繼續
         }
       }
       
-      // 重新載入標籤和圖片列表（因為標籤狀態改變了）
-      await loadCurrentImageLabels();
-      await displayReviewLabels();
+      showSuccess('標籤已保存並標記為已審核');
       
       // 清空選擇
       if (selectedRadio) {
@@ -1239,13 +1255,20 @@ async function saveReviewLabel() {
       }
       state.selectedLabelId = null;
       
-      // 重新應用篩選（因為這張圖片可能已經從未審核列表中移除）
+      // 重新載入審核圖片列表（因為這張圖片已被標記為已審核，會從列表中移除）
+      // applyReviewFilter 會自動調整索引並更新 UI
+      // 如果當前圖片被移除，下一張會自動顯示（因為索引保持不變，列表已更新）
       await applyReviewFilter();
       
       // 更新統計
       await updateStats();
       
-      showSuccess('標籤已保存並標記為已審核');
+      // 檢查是否還有需要審核的圖片
+      if (state.filteredImages.length === 0) {
+        if (elements.reviewLabels) {
+          elements.reviewLabels.innerHTML = '<p class="empty-state">✅ 所有圖片已審核完成！</p>';
+        }
+      }
     } else {
       console.error('❌ 保存失敗:', data.error);
       showError(data.error || '保存失敗');

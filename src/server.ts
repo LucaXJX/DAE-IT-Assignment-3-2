@@ -857,7 +857,7 @@ app.get("/api/model/info", async (req, res) => {
 app.post("/api/images/batch-classify", async (req, res) => {
   try {
     const {
-      limitPerCountry = 10, // 每個文件夾最多分類的圖片數量
+      limitPerCountry = 30, // 每個文件夾最多分類的圖片數量
       topK = 1,
       batchSize = 8,
       saveResults = true,
@@ -929,13 +929,33 @@ app.post("/api/images/batch-classify", async (req, res) => {
 
             // 獲取最高置信度的預測
             const topPrediction = result.predictions[0];
+            
+            // 置信度閾值：如果最高置信度低於此值，分類為"其他"
+            const CONFIDENCE_THRESHOLD = 0.3; // 30% 置信度閾值
+            
+            // 確定最終標籤
+            let finalLabel: string;
+            let finalConfidence: number;
+            
+            if (topPrediction.confidence < CONFIDENCE_THRESHOLD) {
+              // 置信度太低，分類為"其他"
+              finalLabel = "其他";
+              finalConfidence = topPrediction.confidence; // 保留原始置信度作為參考
+              console.log(
+                `   ⚠️  圖片 ${i + 1}: 置信度過低 (${(topPrediction.confidence * 100).toFixed(1)}%)，分類為"其他"（原預測: ${topPrediction.label}）`
+              );
+            } else {
+              // 置信度足夠高，使用原始預測
+              finalLabel = topPrediction.label;
+              finalConfidence = topPrediction.confidence;
+            }
 
             // 保存標籤到資料庫（AI 分類，未審核）
             try {
               saveImageLabel({
                 image_id: unlabeledImage.id,
-                label: topPrediction.label,
-                confidence: topPrediction.confidence,
+                label: finalLabel,
+                confidence: finalConfidence,
                 is_manual: false,
                 reviewed: false,
               });

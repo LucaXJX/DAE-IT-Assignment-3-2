@@ -12,6 +12,7 @@
     "train:continue": "ts-node src/train.ts --continue",
     "train:prepare": "ts-node src/prepare-dataset.ts",
     "train:status": "ts-node src/check-training-status.ts",
+    "fix:brazil": "ts-node src/fix-brazil-data.ts",
     "scrape": "ts-node src/index.ts --scrape",
     "download": "ts-node src/index.ts --download",
     "process": "ts-node src/index.ts --process",

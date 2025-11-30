@@ -485,12 +485,31 @@ export function getImagesForReview(
       });
     }
     if (!imageMap.has(row.id)) {
+      // 驗證 file_name 是否有效
+      if (!row.file_name || row.file_name.trim() === '') {
+        console.warn(`⚠️  跳過圖片 ID ${row.id}：file_name 為空`);
+        return; // 跳過這條記錄
+      }
+      
+      // 驗證 file_name 不應該是關鍵字
+      if (row.file_name === row.keyword || row.file_name.includes('traditional food') || row.file_name.includes('cuisine')) {
+        console.warn(`⚠️  跳過圖片 ID ${row.id}：file_name 看起來像是關鍵字而不是文件名: ${row.file_name}`);
+        return; // 跳過這條記錄
+      }
+      
       // 處理 file_name 可能包含路徑的情況
       let filePath: string;
       if (row.file_name.includes('/') || row.file_name.includes('\\')) {
         filePath = row.file_name;
       } else {
-        filePath = row.keyword ? `${row.keyword}/${row.file_name}` : row.file_name;
+        // 確保 file_name 不是空的
+        filePath = row.file_name ? (row.keyword ? `${getCountryFromKeyword(row.keyword)}/${row.file_name}` : row.file_name) : '';
+      }
+      
+      // 驗證 filePath 是否有效
+      if (!filePath || filePath.trim() === '') {
+        console.warn(`⚠️  跳過圖片 ID ${row.id}：無法構建有效的 filePath`);
+        return; // 跳過這條記錄
       }
       
       // 從 file_name 或關鍵字中提取實際的國家名稱
@@ -517,9 +536,9 @@ export function getImagesForReview(
       
       // 確保 filename 是實際的文件名（應該以 .jpg, .png 等結尾）
       if (!actualFilename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // 如果 filename 不像是文件，嘗試從 filePath 中提取
-        const pathParts = filePath.split(/[/\\]/);
-        actualFilename = pathParts[pathParts.length - 1] || actualFilename;
+        console.warn(`⚠️  圖片 ID ${row.id} 的文件名不像是有效的圖片文件: ${actualFilename}`);
+        // 如果 filename 不像是文件，跳過這條記錄（避免使用關鍵字作為文件名）
+        return;
       }
       
       imageMap.set(row.id, {

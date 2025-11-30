@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "startTime": "2025-11-30T10:24:06.553Z",
+    "endTime": "2025-11-30T12:39:08.426Z",
+    "duration": 8102,
+    "totalEpochs": 5,
+    "batchSize": 32,
+    "learningRate": 0.001,
+    "optimizer": "adam",
+    "lossFunction": "categoricalCrossentropy",
+    "validationSplit": 0.2,
+    "imageSize": 224,
+    "numClasses": 16,
+    "totalImages": 852,
+    "classNames": [
+      "Brazil",
+      "China",
+      "France",
+      "Greece",
+      "India",
+      "Italy",
+      "Japan",
+      "Korea",
+      "Mexico",
+      "Spain",
+      "Thailand",
+      "Turkey",
+      "UK",
+      "USA",
+      "Vietnam",
+      "其他"
+    ],
+    "baseModel": "MobileNet",
+    "featureExtractor": "unknown"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "loss": 1.354849100112915,
+      "accuracy": 0.6270191073417664,
+      "valLoss": 7.385128974914551,
+      "valAccuracy": 0.046783626079559326,
+      "timestamp": "2025-11-30T10:51:03.608Z"
+    },
+    {
+      "epoch": 2,
+      "loss": 1.1318312883377075,
+      "accuracy": 0.6828193664550781,
+      "valLoss": 8.479074478149414,
+      "valAccuracy": 0.035087719559669495,
+      "timestamp": "2025-11-30T11:18:03.916Z"
+    },
+    {
+      "epoch": 3,
+      "loss": 1.020024299621582,
+      "accuracy": 0.7165932059288025,
+      "valLoss": 9.447042465209961,
+      "valAccuracy": 0.07017543911933899,
+      "timestamp": "2025-11-30T11:45:06.213Z"
+    },
+    {
+      "epoch": 4,
+      "loss": 0.9520410299301147,
+      "accuracy": 0.7298091053962708,
+      "valLoss": 8.357902526855469,
+      "valAccuracy": 0.0760233923792839,
+      "timestamp": "2025-11-30T12:12:06.149Z"
+    },
+    {
+      "epoch": 5,
+      "loss": 0.7417505979537964,
+      "accuracy": 0.8002936840057373,
+      "valLoss": 10.742837905883789,
+      "valAccuracy": 0.04093567281961441,
+      "timestamp": "2025-11-30T12:39:08.423Z"
+    }
+  ]
+}
