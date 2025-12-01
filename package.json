@@ -21,14 +21,10 @@
     "db:dev": "cat erd.txt | auto-migrate plan && cat erd.txt | auto-migrate db.sqlite3 && cat erd.txt | erd-to-proxy > src/proxy.ts",
     "db:gen-proxy": "cat erd.txt | erd-to-proxy",
     "db:ui": "cat erd.txt | erd-ui",
-    "prepare:dataset": "ts-node src/prepare-dataset.ts",
+    "prepare:dataset": "ts-node src/prepare-dataset-for-classification.ts",
     "generate:report": "ts-node src/generate-report.ts",
-    "dataset:webui": "npx image-dataset --webUI --downloadDir ./dataset --port 8100",
-    "dataset:classify": "npx image-dataset --analysis --downloadDir ./dataset --complexity 3",
-    "dataset:classify:low": "npx image-dataset --analysis --downloadDir ./dataset --complexity 1",
-    "dataset:classify:high": "npx image-dataset --analysis --downloadDir ./dataset --complexity 5",
-    "dataset:rename": "npx image-dataset --rename --downloadDir ./dataset",
-    "dataset:benchmark": "npx image-dataset --benchmark --downloadDir ./dataset"
+    "dataset:sync": "ts-node src/sync-dataset-from-folders.ts",
+    "label:webui": "ts-node src/simple-classification-ui.ts"
   },
   "repository": {
     "type": "git",
@@ -54,23 +50,22 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "better-sqlite3": "^12.4.1",
+    "better-sqlite3": "11.10.0",
     "better-sqlite3-proxy": "^2.11.3",
     "better-sqlite3-schema": "^3.1.9",
+    "@tensorflow/tfjs": "^4.22.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "image-dataset": "^1.12.2",
     "knex": "^3.1.0",
     "pexels": "^1.4.0",
     "playwright": "^1.56.1",
-    "sharp": "^0.34.5",
-    "tensorflow-helpers": "^1.5.2"
+    "sharp": "^0.34.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3"
+      "better-sqlite3",
+      "sharp"
     ]
   }
 }

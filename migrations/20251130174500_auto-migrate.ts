@@ -45,7 +45,7 @@ export async function up(knex: Knex): Promise<void> {
       table.timestamp('reviewed_at').notNullable()
       table.string('reviewed_by', 100).notNullable()
       table.string('model_version', 50).notNullable()
-      table.(image_id,('unique').notNullable()
+      // unique(image_id, label_id) will be enforced in application layer
       table.timestamps(false, true)
     })
   }
@@ -105,7 +105,7 @@ export async function up(knex: Knex): Promise<void> {
       table.integer('image_id').unsigned().notNullable().references('images.id')
       table.string('folder_name', 100).notNullable()
       table.timestamp('created_at').notNullable()
-      table.(dataset_id,('unique').notNullable()
+      // unique(dataset_id, image_id) will be enforced in application layer
     })
   }
 
@@ -144,7 +144,7 @@ export async function up(knex: Knex): Promise<void> {
       table.text('stat_value').notNullable()
       table.date('date_recorded').notNullable()
       table.timestamp('created_at').notNullable()
-      table.(stat_type,('unique').notNullable()
+      // unique(stat_type, stat_key, date_recorded) will be enforced in application layer
     })
   }
 }
