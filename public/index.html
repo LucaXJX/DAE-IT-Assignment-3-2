@@ -204,6 +204,26 @@
           Load model
         </button>
       </div>
+      <div style="margin-top: 0.5rem">
+        <label>
+          自動分類信心閾值:
+          <input
+            id="autoClassifyThreshold"
+            type="number"
+            min="0.5"
+            max="1.0"
+            step="0.05"
+            value="0.85"
+            style="width: 4rem; margin-right: 1rem"
+          />
+          <span class="text-muted" style="font-size: 0.9em">
+            (信心分數 ≥ 此值時自動標註)
+          </span>
+        </label>
+        <button onclick="autoClassifyAll()" style="margin-left: 0.5rem">
+          自動分類所有 Unclassified
+        </button>
+      </div>
       <div id="trainStatus" class="text-muted"></div>
       <div class="text-muted" style="font-size: 0.85em; margin-top: 0.25rem">
         <strong>模型存儲位置：</strong>模型目前存儲在瀏覽器記憶體中（變數
@@ -229,6 +249,9 @@
     <section>
       <div class="section-header">Classified</div>
       <button onclick="loadClassified()">reload</button>
+      <button onclick="moveClassifiedImages()" style="margin-left: 0.5rem; background-color: #4CAF50; color: white;">
+        複製到 classified 文件夾
+      </button>
       <div id="classifiedList">(not auto loaded)</div>
     </section>
     <div id="correctClassDialog">
@@ -251,6 +274,9 @@
         document.getElementById("maxSamplesPerClass");
       const trainEpochsInput = document.getElementById("trainEpochs");
       const trainBatchSizeInput = document.getElementById("trainBatchSize");
+      const autoClassifyThresholdInput = document.getElementById(
+        "autoClassifyThreshold"
+      );
 
       const selected = new Set();
 
@@ -258,6 +284,9 @@
       let currentModel = null;
       const INPUT_HEIGHT = 64;
       const INPUT_WIDTH = 64;
+      const MAX_PREDICT_IMAGES = 200; // 一次最多預測的圖片數量（避免 WebGL context lost）
+      const PREDICT_BATCH_SIZE = 50; // 每批處理的圖片數量
+      const PREDICT_BATCH_DELAY = 100; // 每批之間的延遲（毫秒），讓 GPU 有時間釋放資源
 
       function updateCorrectCount() {
         correctCount.textContent = String(selected.size);
@@ -334,6 +363,16 @@
             updateCorrectCount();
           };
           summary.appendChild(toggleBtn);
+
+          // 添加「計算」按鈕，點擊後對該分組進行預測和排序
+          const computeBtn = document.createElement("button");
+          computeBtn.textContent = "計算";
+          computeBtn.style.marginLeft = "0.5rem";
+          computeBtn.onclick = async (ev) => {
+            ev.preventDefault();
+            await predictAndSortGroup(wrapper);
+          };
+          summary.appendChild(computeBtn);
           details.appendChild(summary);
 
           const grid = document.createElement("div");
@@ -363,10 +402,112 @@
           unclassifiedList.appendChild(wrapper);
         });
 
-        // 如果已經有訓練好的模型，對當前圖片做一次預測
-        if (currentModel) {
-          await updatePredictionsForCurrentUnclassified();
+        // 不再自動預測，改為手動點擊「計算」按鈕觸發
+      }
+
+      // 對單個分組進行預測和排序
+      async function predictAndSortGroup(groupElement) {
+        if (!currentModel) {
+          alert("請先訓練模型或載入已保存的模型。");
+          return;
         }
+
+        const grid = groupElement.querySelector(".img-list");
+        if (!grid) return;
+
+        const items = Array.from(grid.querySelectorAll(".image-item"));
+        if (items.length === 0) return;
+
+        // 找出所有還沒被預測過的圖片
+        const unpredictedItems = [];
+        for (const item of items) {
+          const pred = item.querySelector(".prediction");
+          if (!pred) continue;
+          const text = pred.textContent.trim();
+          if (
+            text === "Model: (not computed)" ||
+            text === "Model: (no trained model)"
+          ) {
+            unpredictedItems.push(item);
+          }
+        }
+
+        if (unpredictedItems.length === 0) {
+          // 如果都已經預測過了，只做排序
+          await sortGroupByUncertainty(groupElement);
+          return;
+        }
+
+        // 分批處理未預測的圖片（避免一次處理太多導致 WebGL context lost）
+        for (let i = 0; i < unpredictedItems.length; i += PREDICT_BATCH_SIZE) {
+          const batch = unpredictedItems.slice(i, i + PREDICT_BATCH_SIZE);
+          for (const item of batch) {
+            const img = item.querySelector("img");
+            const pred = item.querySelector(".prediction");
+            if (img && pred) {
+              await predictImage(img, pred);
+            }
+          }
+          // 每批之間稍作延遲，讓 GPU 有時間釋放資源
+          if (i + PREDICT_BATCH_SIZE < unpredictedItems.length) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, PREDICT_BATCH_DELAY)
+            );
+          }
+        }
+
+        // 預測完成後排序
+        await sortGroupByUncertainty(groupElement);
+      }
+
+      // 對單個分組按不確定度排序
+      async function sortGroupByUncertainty(groupElement) {
+        const grid = groupElement.querySelector(".img-list");
+        if (!grid) return;
+
+        const items = Array.from(grid.querySelectorAll(".image-item"));
+
+        // 收集每張圖的預測結果和不確定度
+        const itemsWithUncertainty = [];
+        for (const item of items) {
+          const img = item.querySelector("img");
+          const pred = item.querySelector(".prediction");
+          if (!img || !pred) continue;
+
+          let uncertainty = 1.0;
+          // 如果已經有計算過的 uncertainty，直接使用
+          if (pred.dataset.uncertainty) {
+            const parsed = parseFloat(pred.dataset.uncertainty);
+            if (!Number.isNaN(parsed)) {
+              uncertainty = parsed;
+            }
+          } else {
+            // 如果還沒有預測過，但模型存在，嘗試從 pred.textContent 解析
+            const text = pred.textContent.trim();
+            const match = text.match(/food\s+([\d.]+),\s+other\s+([\d.]+)/);
+            if (match) {
+              const pFood = parseFloat(match[1]);
+              if (!Number.isNaN(pFood)) {
+                uncertainty = 1 - Math.abs(pFood - 0.5) * 2;
+                pred.dataset.uncertainty = String(uncertainty);
+              }
+            }
+          }
+
+          itemsWithUncertainty.push({
+            item,
+            uncertainty,
+          });
+        }
+
+        // 按 uncertainty 降序排序（不確定的在前）
+        itemsWithUncertainty.sort((a, b) => b.uncertainty - a.uncertainty);
+
+        // 清空 grid 並按新順序重新添加
+        grid.innerHTML = "";
+        itemsWithUncertainty.forEach(({ item }) => {
+          grid.appendChild(item);
+        });
       }
 
       async function loadClassified() {
@@ -398,6 +539,34 @@
           const details = document.createElement("details");
           const summary = document.createElement("summary");
           summary.textContent = `${cls.filenames.length} images`;
+
+          // 添加 select all 按鈕
+          const toggleBtn = document.createElement("button");
+          toggleBtn.textContent = "select all";
+          toggleBtn.style.marginLeft = "0.5rem";
+          toggleBtn.onclick = (ev) => {
+            ev.preventDefault();
+            const imgs = details.querySelectorAll("img");
+            if (toggleBtn.textContent === "select all") {
+              imgs.forEach((img) => {
+                if (!img.classList.contains("selected")) {
+                  img.classList.add("selected");
+                  selected.add(img.dataset.filename);
+                }
+              });
+              toggleBtn.textContent = "unselect all";
+            } else {
+              imgs.forEach((img) => {
+                if (img.classList.contains("selected")) {
+                  img.classList.remove("selected");
+                  selected.delete(img.dataset.filename);
+                }
+              });
+              toggleBtn.textContent = "select all";
+            }
+            updateCorrectCount();
+          };
+          summary.appendChild(toggleBtn);
           details.appendChild(summary);
 
           const grid = document.createElement("div");
@@ -407,6 +576,8 @@
             const img = document.createElement("img");
             img.src = "/" + filename;
             img.loading = "lazy";
+            img.dataset.filename = filename; // 保存路徑，例如 "Brazil/xxx.jpg"
+            img.onclick = () => toggleImageSelection(img); // 添加點擊選擇功能，可重新標註
             grid.appendChild(img);
           });
 
@@ -414,6 +585,53 @@
           wrapper.appendChild(details);
           classifiedList.appendChild(wrapper);
         });
+      }
+
+      async function moveClassifiedImages() {
+        if (!confirm("確定要將所有已分類的圖片複製到 dataset/classified/ 文件夾嗎？\n\n這會：\n1. 複製圖片文件到新位置（原文件保留）\n2. 更新資料庫中的路徑\n3. 可能需要一些時間")) {
+          return;
+        }
+
+        const resultDiv = document.createElement("div");
+        resultDiv.textContent = "正在移動圖片，請稍候...";
+        resultDiv.style.marginTop = "1rem";
+        resultDiv.style.padding = "0.5rem";
+        resultDiv.style.backgroundColor = "#f0f0f0";
+        resultDiv.style.borderRadius = "4px";
+        
+        const section = document.querySelector("section:has(#classifiedList)");
+        if (section) {
+          section.appendChild(resultDiv);
+        }
+
+        try {
+          const res = await fetch("/move-classified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          const json = await res.json();
+          
+          if (json.error) {
+            resultDiv.textContent = `錯誤: ${json.error}`;
+            resultDiv.style.backgroundColor = "#ffebee";
+            resultDiv.style.color = "#c62828";
+          } else {
+            resultDiv.textContent = json.message || "移動完成！請查看終端輸出了解詳情。";
+            resultDiv.style.backgroundColor = "#e8f5e9";
+            resultDiv.style.color = "#2e7d32";
+            
+            // 3秒後自動重新載入分類列表
+            setTimeout(() => {
+              loadClassified();
+              resultDiv.remove();
+            }, 3000);
+          }
+        } catch (error) {
+          resultDiv.textContent = `錯誤: ${error.message || String(error)}`;
+          resultDiv.style.backgroundColor = "#ffebee";
+          resultDiv.style.color = "#c62828";
+        }
       }
 
       async function submitCorrect(targetClass) {
@@ -623,9 +841,8 @@
           ys.dispose();
 
           trainStatus.textContent = "Training finished.";
-
-          // 重新計算當前頁面的預測
-          await updatePredictionsForCurrentUnclassified();
+          trainStatus.textContent +=
+            " 請點擊各分組的「計算」按鈕進行預測和排序。";
         } catch (err) {
           console.error(err);
           trainStatus.textContent = "Training error: " + err.message;
@@ -635,7 +852,7 @@
       async function predictImage(img, predDiv) {
         if (!currentModel) {
           predDiv.textContent = "Model: (no trained model)";
-          return;
+          return { pFood: 0.5, pOther: 0.5, uncertainty: 1.0 };
         }
 
         predDiv.textContent = "Model: computing...";
@@ -650,26 +867,26 @@
         const pOther = probs[0];
         const pFood = probs[1];
 
+        // 計算不確定度：當 pFood = 0.5 時最不確定（uncertainty = 1.0），當 pFood = 0 或 1 時最確定（uncertainty = 0.0）
+        const uncertainty = 1 - Math.abs(pFood - 0.5) * 2;
+
         predDiv.textContent = `Model: food ${pFood.toFixed(
           2
         )}, other ${pOther.toFixed(2)}`;
+        predDiv.dataset.uncertainty = String(uncertainty);
 
         t.dispose();
         resized.dispose();
         input.dispose();
         logits.dispose();
+
+        return { pFood, pOther, uncertainty };
       }
 
+      // 此函數已不再使用，改為手動點擊「計算」按鈕觸發預測
+      // 保留此函數以備將來需要批量處理時使用
       async function updatePredictionsForCurrentUnclassified() {
-        if (!currentModel) return;
-        const items = unclassifiedList.querySelectorAll(".image-item");
-        for (const item of items) {
-          const img = item.querySelector("img");
-          const pred = item.querySelector(".prediction");
-          if (img && pred) {
-            await predictImage(img, pred);
-          }
-        }
+        // 不再自動批量處理，改為手動觸發
       }
 
       // ===== 模型保存 / 載入（IndexedDB）=====
@@ -695,13 +912,137 @@
           trainStatus.textContent = "Loading model from IndexedDB...";
           currentModel = await tf.loadLayersModel(MODEL_STORAGE_KEY);
           trainStatus.textContent = "Model loaded from IndexedDB.";
-          // 載入後立即更新當前頁面的預測
-          await updatePredictionsForCurrentUnclassified();
+          trainStatus.textContent +=
+            " 請點擊各分組的「計算」按鈕進行預測和排序。";
         } catch (err) {
           console.error(err);
           trainStatus.textContent =
             "Load error: " + (err.message || "no saved model");
         }
+      }
+
+      // ===== 自動分類功能 =====
+
+      async function autoClassifyAll() {
+        if (!currentModel) {
+          alert("請先訓練模型或載入已保存的模型。");
+          return;
+        }
+
+        const threshold = parseFloat(autoClassifyThresholdInput.value) || 0.85;
+        if (threshold < 0.5 || threshold > 1.0) {
+          alert("信心閾值必須在 0.5 到 1.0 之間。");
+          return;
+        }
+
+        const confirmed = confirm(
+          `確定要自動分類所有 Unclassified 圖片嗎？\n` +
+            `信心閾值: ${threshold}\n` +
+            `(信心分數 ≥ ${threshold} 的圖片會被自動標註)`
+        );
+        if (!confirmed) return;
+
+        trainStatus.textContent = "開始自動分類...";
+        trainLog.textContent = "";
+
+        const allItems = Array.from(
+          unclassifiedList.querySelectorAll(".image-item")
+        );
+        if (allItems.length === 0) {
+          trainStatus.textContent = "沒有未分類的圖片。";
+          return;
+        }
+
+        const autoClassified = { food: [], other: [] };
+        let processed = 0;
+        let skipped = 0;
+
+        // 分批處理，避免一次處理太多
+        for (let i = 0; i < allItems.length; i += PREDICT_BATCH_SIZE) {
+          const batch = allItems.slice(i, i + PREDICT_BATCH_SIZE);
+
+          for (const item of batch) {
+            const img = item.querySelector("img");
+            const pred = item.querySelector(".prediction");
+            if (!img || !pred) continue;
+
+            const filename = img.dataset.filename;
+            if (!filename) continue;
+
+            // 如果已經預測過，直接讀取結果；否則先預測
+            let pFood = 0.5;
+            let pOther = 0.5;
+
+            if (pred.dataset.uncertainty) {
+              // 從已保存的結果解析
+              const text = pred.textContent.trim();
+              const match = text.match(/food\s+([\d.]+),\s+other\s+([\d.]+)/);
+              if (match) {
+                pFood = parseFloat(match[1]);
+                pOther = parseFloat(match[2]);
+              }
+            } else {
+              // 需要先預測
+              const result = await predictImage(img, pred);
+              pFood = result.pFood;
+              pOther = result.pOther;
+            }
+
+            // 判斷是否達到閾值並自動分類
+            if (pFood >= threshold) {
+              autoClassified.food.push(filename);
+            } else if (pOther >= threshold) {
+              autoClassified.other.push(filename);
+            } else {
+              skipped++;
+            }
+
+            processed++;
+          }
+
+          // 每批之間稍作延遲
+          if (i + PREDICT_BATCH_SIZE < allItems.length) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, PREDICT_BATCH_DELAY)
+            );
+          }
+
+          trainStatus.textContent = `處理中: ${processed}/${allItems.length}...`;
+        }
+
+        // 批量提交自動分類結果
+        let totalAutoClassified = 0;
+        for (const [className, filenames] of Object.entries(autoClassified)) {
+          if (filenames.length > 0) {
+            try {
+              const res = await fetch("/correct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  className,
+                  images: filenames,
+                }),
+              });
+
+              const json = await res.json();
+              if (json.error) {
+                trainLog.textContent += `錯誤 (${className}): ${json.error}\n`;
+              } else {
+                totalAutoClassified += filenames.length;
+                trainLog.textContent += `自動標註 ${className}: ${filenames.length} 張\n`;
+              }
+            } catch (err) {
+              trainLog.textContent += `錯誤 (${className}): ${err.message}\n`;
+            }
+          }
+        }
+
+        trainStatus.textContent = `自動分類完成！已標註 ${totalAutoClassified} 張，跳過 ${skipped} 張（信心分數 < ${threshold}）`;
+        trainLog.textContent += `\n總計: 處理 ${processed} 張，自動標註 ${totalAutoClassified} 張，跳過 ${skipped} 張\n`;
+
+        // 重新載入列表以反映變化
+        await loadUnclassified();
+        await loadClassified();
       }
 
       // 初始化

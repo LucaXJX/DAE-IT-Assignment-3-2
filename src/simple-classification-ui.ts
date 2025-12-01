@@ -387,6 +387,29 @@ app.post("/correct", (req: any, res: any) => {
   }
 });
 
+/**
+ * 複製已分類圖片到 dataset/classified/ 文件夾
+ */
+app.post("/move-classified", async (req: any, res: any) => {
+  try {
+    // 動態導入複製函數
+    const { moveClassifiedImages } = await import("./move-classified-images");
+    
+    // 執行複製（這會同步執行，可能需要一些時間）
+    moveClassifiedImages();
+    
+    res.json({ 
+      success: true, 
+      message: "已分類圖片複製完成，請查看終端輸出了解詳情。原圖片仍保留在原位置。" 
+    });
+  } catch (error: any) {
+    console.error("[move-classified] 錯誤:", error);
+    res.status(500).json({ 
+      error: error.message || String(error) 
+    });
+  }
+});
+
 // 啟動服務器
 app.listen(PORT, () => {
   console.log("=".repeat(60));
