@@ -18,7 +18,7 @@ import { db } from "./db";
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8100;
 const DATASET_DIR = path.resolve(__dirname, "../dataset");
-const PUBLIC_DIR = path.resolve(__dirname, "../docs/image-dataset/public");
+const PUBLIC_DIR = path.resolve(__dirname, "../public");
 const FOOD_DIR = path.join(DATASET_DIR, "food");
 const OTHER_DIR = path.join(DATASET_DIR, "other");
 

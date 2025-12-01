@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Dataset</title>
+    <style>
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      section {
+        margin-bottom: 1rem;
+      }
+      .section-header {
+        font-size: 1.25rem;
+        margin: 0.25rem 0;
+      }
+      #actionList {
+        display: flex;
+        gap: 0.5rem;
+      }
+      #actionList button {
+        padding: 0.25rem 0.5rem;
+      }
+      #statsList {
+        display: flex;
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+      }
+      #statsList > div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+      }
+      .stats-title {
+        font-weight: bold;
+        display: inline-block;
+        background-color: #faebd780;
+        padding: 0.25rem 0.5rem;
+      }
+      #statsList table {
+        margin-block-start: 0.25rem;
+        border-collapse: collapse;
+      }
+      #statsList table th,
+      #statsList table td {
+        border: 1px solid black;
+        padding: 0.25rem 0.5rem;
+      }
+      #classifiedList [data-text="className"],
+      #unclassifiedList [data-text="className"] {
+        font-weight: bold;
+        margin: 0.25rem 0;
+      }
+      .img-list {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      #classifiedList .img-list {
+        line-height: 0;
+      }
+      .img-list img {
+        width: 200px;
+        height: 200px;
+        object-fit: contain;
+        padding: 5px;
+        --border: 5px;
+        --top: transparent;
+        --bottom: transparent;
+        background-size: var(--border) 100%;
+        background-position: 0 0, 100% 0;
+        background-repeat: no-repeat;
+        border-top: var(--border) solid var(--top);
+        border-bottom: var(--border) solid var(--bottom);
+        background-image: linear-gradient(var(--top), var(--bottom)),
+          linear-gradient(var(--top), var(--bottom));
+      }
+      .img-list img.selected {
+        --top: #47c465;
+        --bottom: #00deff;
+      }
+      .heatmap-container.overlap {
+        position: relative;
+      }
+      .heatmap-container.overlap .heatmap-canvas {
+        position: absolute;
+        inset: 0;
+      }
+      .class-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .class-item {
+      }
+      #correctClassDialog {
+        position: sticky;
+        bottom: 1rem;
+        margin: auto;
+        padding: 1rem;
+        border-radius: 1rem;
+        border: 1px solid black;
+        background-color: #fffa;
+        backdrop-filter: blue(3px);
+        width: fit-content;
+      }
+      .fabs.bottom.right {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        font-size: 2rem;
+        display: flex;
+        flex-direction: column;
+      }
+      button key {
+        text-decoration: underline;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .text-muted {
+        color: #666;
+        font-size: 0.9em;
+      }
+      #modelSettingsDialog table {
+        margin: 0.5rem 0;
+      }
+      #modelSettingsDialog th {
+        text-align: right;
+        padding-right: 1rem;
+        vertical-align: top;
+        padding-top: 0.5rem;
+        white-space: nowrap;
+      }
+      #modelSettingsDialog td {
+        min-width: 200px;
+        padding-top: 0.5rem;
+      }
+      #modelSettingsDialog input {
+        margin-bottom: 0.25rem;
+      }
+      #modelSettingsDialog .text-muted {
+        line-height: 1.4;
+      }
+      .prediction {
+        font-size: 0.8rem;
+        color: #444;
+        padding: 0 0.25rem 0.5rem;
+      }
+      .prediction span.label {
+        font-weight: bold;
+      }
+    </style>
+    <!-- 瀏覽器版 TensorFlow.js（後續用於真正的模型推論與訓練） -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  </head>
+  <body>
+    <section id="trainingPanel">
+      <div class="section-header">Training (Browser TFJS)</div>
+      <div>
+        <label>
+          Max samples per class:
+          <input
+            id="maxSamplesPerClass"
+            type="number"
+            min="10"
+            max="1000"
+            value="200"
+            style="width: 5rem; margin-right: 1rem"
+          />
+        </label>
+        <label>
+          Epochs:
+          <input
+            id="trainEpochs"
+            type="number"
+            min="1"
+            max="50"
+            value="5"
+            style="width: 4rem; margin-right: 1rem"
+          />
+        </label>
+        <label>
+          Batch size:
+          <input
+            id="trainBatchSize"
+            type="number"
+            min="4"
+            max="128"
+            value="32"
+            style="width: 4rem; margin-right: 1rem"
+          />
+        </label>
+        <button onclick="startTraining()">Train model (Continue)</button>
+        <button onclick="startRetraining()" style="margin-left: 0.5rem">
+          Retrain (Reset)
+        </button>
+        <button onclick="saveModel()" style="margin-left: 0.5rem">
+          Save model
+        </button>
+        <button onclick="loadModel()" style="margin-left: 0.5rem">
+          Load model
+        </button>
+      </div>
+      <div id="trainStatus" class="text-muted"></div>
+      <div class="text-muted" style="font-size: 0.85em; margin-top: 0.25rem">
+        <strong>模型存儲位置：</strong>模型目前存儲在瀏覽器記憶體中（變數
+        <code>currentModel</code>），刷新頁面會丟失。 <br />未來可選：使用
+        IndexedDB 持久化保存模型權重。
+      </div>
+      <pre
+        id="trainLog"
+        style="
+          max-height: 200px;
+          overflow-y: auto;
+          background: #f5f5f5;
+          padding: 0.5rem;
+          border-radius: 4px;
+        "
+      ></pre>
+    </section>
+    <section>
+      <div class="section-header">Unclassified</div>
+      <button onclick="loadUnclassified()">reload</button>
+      <div id="unclassifiedList">(not auto loaded)</div>
+    </section>
+    <section>
+      <div class="section-header">Classified</div>
+      <button onclick="loadClassified()">reload</button>
+      <div id="classifiedList">(not auto loaded)</div>
+    </section>
+    <div id="correctClassDialog">
+      <div class="section-header">
+        Correct Label (<span id="correctCount">0</span>)
+      </div>
+      <div id="correctList"></div>
+      <div id="correctResult"></div>
+    </div>
+    <script>
+      const unclassifiedList = document.getElementById("unclassifiedList");
+      const classifiedList = document.getElementById("classifiedList");
+      const correctCount = document.getElementById("correctCount");
+      const correctList = document.getElementById("correctList");
+      const correctResult = document.getElementById("correctResult");
+
+      const trainStatus = document.getElementById("trainStatus");
+      const trainLog = document.getElementById("trainLog");
+      const maxSamplesPerClassInput =
+        document.getElementById("maxSamplesPerClass");
+      const trainEpochsInput = document.getElementById("trainEpochs");
+      const trainBatchSizeInput = document.getElementById("trainBatchSize");
+
+      const selected = new Set();
+
+      // TFJS model and config
+      let currentModel = null;
+      const INPUT_HEIGHT = 64;
+      const INPUT_WIDTH = 64;
+
+      function updateCorrectCount() {
+        correctCount.textContent = String(selected.size);
+      }
+
+      function toggleImageSelection(img) {
+        const filename = img.dataset.filename;
+        if (!filename) return;
+
+        if (img.classList.contains("selected")) {
+          img.classList.remove("selected");
+          selected.delete(filename);
+        } else {
+          img.classList.add("selected");
+          selected.add(filename);
+        }
+        updateCorrectCount();
+      }
+
+      async function loadUnclassified() {
+        unclassifiedList.textContent = "loading...";
+        selected.clear();
+        updateCorrectCount();
+
+        const res = await fetch("/unclassified");
+        const json = await res.json();
+
+        if (json.error) {
+          unclassifiedList.textContent = json.error;
+          return;
+        }
+
+        if (!json.classes || json.classes.length === 0) {
+          unclassifiedList.textContent = "no unclassified images";
+          return;
+        }
+
+        unclassifiedList.innerHTML = "";
+
+        json.classes.forEach((cls) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "unclassified";
+
+          const title = document.createElement("div");
+          title.textContent = cls.className;
+          wrapper.appendChild(title);
+
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = `${cls.images.length} images`;
+          const toggleBtn = document.createElement("button");
+          toggleBtn.textContent = "select all";
+          toggleBtn.style.marginLeft = "0.5rem";
+          toggleBtn.onclick = (ev) => {
+            ev.preventDefault();
+            const imgs = details.querySelectorAll("img");
+            if (toggleBtn.textContent === "select all") {
+              imgs.forEach((img) => {
+                if (!img.classList.contains("selected")) {
+                  img.classList.add("selected");
+                  selected.add(img.dataset.filename);
+                }
+              });
+              toggleBtn.textContent = "unselect all";
+            } else {
+              imgs.forEach((img) => {
+                if (img.classList.contains("selected")) {
+                  img.classList.remove("selected");
+                  selected.delete(img.dataset.filename);
+                }
+              });
+              toggleBtn.textContent = "select all";
+            }
+            updateCorrectCount();
+          };
+          summary.appendChild(toggleBtn);
+          details.appendChild(summary);
+
+          const grid = document.createElement("div");
+          grid.className = "img-list";
+
+          cls.images.forEach((image) => {
+            const item = document.createElement("div");
+            item.className = "image-item";
+
+            const img = document.createElement("img");
+            img.src = "/" + image.filename;
+            img.loading = "lazy";
+            img.dataset.filename = image.filename;
+            img.onclick = () => toggleImageSelection(img);
+            item.appendChild(img);
+
+            const pred = document.createElement("div");
+            pred.className = "prediction";
+            pred.textContent = "Model: (not computed)";
+            item.appendChild(pred);
+
+            grid.appendChild(item);
+          });
+
+          details.appendChild(grid);
+          wrapper.appendChild(details);
+          unclassifiedList.appendChild(wrapper);
+        });
+
+        // 如果已經有訓練好的模型，對當前圖片做一次預測
+        if (currentModel) {
+          await updatePredictionsForCurrentUnclassified();
+        }
+      }
+
+      async function loadClassified() {
+        classifiedList.textContent = "loading...";
+
+        const res = await fetch("/classified");
+        const json = await res.json();
+
+        if (json.error) {
+          classifiedList.textContent = json.error;
+          return;
+        }
+
+        if (!json.classes || json.classes.length === 0) {
+          classifiedList.textContent = "no classified images";
+          return;
+        }
+
+        classifiedList.innerHTML = "";
+
+        json.classes.forEach((cls) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "classified";
+
+          const title = document.createElement("div");
+          title.textContent = cls.className;
+          wrapper.appendChild(title);
+
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = `${cls.filenames.length} images`;
+          details.appendChild(summary);
+
+          const grid = document.createElement("div");
+          grid.className = "img-list";
+
+          cls.filenames.forEach((filename) => {
+            const img = document.createElement("img");
+            img.src = "/" + filename;
+            img.loading = "lazy";
+            grid.appendChild(img);
+          });
+
+          details.appendChild(grid);
+          wrapper.appendChild(details);
+          classifiedList.appendChild(wrapper);
+        });
+      }
+
+      async function submitCorrect(targetClass) {
+        if (selected.size === 0) {
+          correctResult.textContent = "No images selected.";
+          return;
+        }
+
+        correctResult.textContent = "Saving...";
+
+        const res = await fetch("/correct", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            className: targetClass,
+            images: Array.from(selected),
+          }),
+        });
+
+        const json = await res.json();
+        if (json.error) {
+          correctResult.textContent = json.error;
+          return;
+        }
+
+        correctResult.textContent = "Saved.";
+        selected.clear();
+        updateCorrectCount();
+        await loadUnclassified();
+        await loadClassified();
+      }
+
+      function setupCorrectButtons() {
+        correctList.innerHTML = "";
+        ["food", "other"].forEach((name, idx) => {
+          const btn = document.createElement("button");
+          btn.textContent = `[${idx + 1}] ${name}`;
+          btn.onclick = () => submitCorrect(name);
+          btn.style.marginRight = "0.5rem";
+          correctList.appendChild(btn);
+        });
+      }
+
+      window.addEventListener("keypress", (event) => {
+        if (event.key === "1") {
+          submitCorrect("food");
+          event.preventDefault();
+        } else if (event.key === "2") {
+          submitCorrect("other");
+          event.preventDefault();
+        }
+      });
+
+      // ===== TFJS: dataset 準備與訓練 =====
+
+      async function loadImageAsTensor(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            let t = tf.browser.fromPixels(img).toFloat().div(255);
+            t = tf.image.resizeBilinear(t, [INPUT_HEIGHT, INPUT_WIDTH]);
+            resolve(t);
+          };
+          img.onerror = (err) => reject(err);
+          img.src = src;
+        });
+      }
+
+      async function prepareDatasetFromClassified(maxPerClass) {
+        const res = await fetch("/classified");
+        const json = await res.json();
+
+        if (json.error) {
+          throw new Error(json.error);
+        }
+
+        const xs = [];
+        const ys = [];
+
+        let totalCount = 0;
+
+        for (const cls of json.classes) {
+          const label = cls.className === "food" ? [0, 1] : [1, 0]; // [other, food]
+          const filenames = cls.filenames.slice(0, maxPerClass);
+
+          for (const filename of filenames) {
+            const src = "/" + filename;
+            const x = await loadImageAsTensor(src);
+            xs.push(x);
+            ys.push(tf.tensor1d(label));
+            totalCount++;
+          }
+        }
+
+        if (xs.length === 0) {
+          throw new Error("No classified images available for training.");
+        }
+
+        const xsStack = tf.stack(xs);
+        const ysStack = tf.stack(ys);
+
+        // 釋放單張 tensor
+        xs.forEach((t) => t.dispose());
+        ys.forEach((t) => t.dispose());
+
+        return { xs: xsStack, ys: ysStack, count: totalCount };
+      }
+
+      function buildModel() {
+        const model = tf.sequential();
+        model.add(
+          tf.layers.conv2d({
+            inputShape: [INPUT_HEIGHT, INPUT_WIDTH, 3],
+            filters: 16,
+            kernelSize: 3,
+            activation: "relu",
+          })
+        );
+        model.add(tf.layers.maxPooling2d({ poolSize: 2 }));
+        model.add(tf.layers.flatten());
+        model.add(
+          tf.layers.dense({
+            units: 32,
+            activation: "relu",
+          })
+        );
+        model.add(
+          tf.layers.dense({
+            units: 2,
+            activation: "softmax",
+          })
+        );
+
+        model.compile({
+          optimizer: tf.train.adam(0.001),
+          loss: "categoricalCrossentropy",
+          metrics: ["accuracy"],
+        });
+
+        return model;
+      }
+
+      async function startRetraining() {
+        // 重新訓練：先清空現有模型
+        if (currentModel) {
+          currentModel.dispose();
+          currentModel = null;
+        }
+        await startTraining();
+      }
+
+      async function startTraining() {
+        try {
+          const maxPerClass =
+            parseInt(maxSamplesPerClassInput.value, 10) || 200;
+          const epochs = parseInt(trainEpochsInput.value, 10) || 5;
+          const batchSize = parseInt(trainBatchSizeInput.value, 10) || 32;
+
+          trainStatus.textContent = "Preparing dataset...";
+          trainLog.textContent = "";
+
+          const { xs, ys, count } = await prepareDatasetFromClassified(
+            maxPerClass
+          );
+
+          if (count < 10) {
+            trainStatus.textContent =
+              "Not enough classified images to train (need >= 10).";
+            xs.dispose();
+            ys.dispose();
+            return;
+          }
+
+          // 繼續訓練：如果模型不存在才創建新模型
+          if (!currentModel) {
+            currentModel = buildModel();
+            trainLog.textContent = "Created new model.\n";
+          } else {
+            trainLog.textContent = "Continuing training on existing model.\n";
+          }
+
+          trainStatus.textContent = `Training on ${count} samples...`;
+
+          await currentModel.fit(xs, ys, {
+            epochs,
+            batchSize,
+            shuffle: true,
+            callbacks: {
+              onEpochEnd: (epoch, logs) => {
+                const acc =
+                  logs.acc ??
+                  logs.accuracy ??
+                  logs["acc"] ??
+                  logs["accuracy"] ??
+                  0;
+                trainLog.textContent += `Epoch ${
+                  epoch + 1
+                }/${epochs}: loss=${logs.loss.toFixed(4)}, acc=${acc.toFixed(
+                  4
+                )}\n`;
+              },
+            },
+          });
+
+          xs.dispose();
+          ys.dispose();
+
+          trainStatus.textContent = "Training finished.";
+
+          // 重新計算當前頁面的預測
+          await updatePredictionsForCurrentUnclassified();
+        } catch (err) {
+          console.error(err);
+          trainStatus.textContent = "Training error: " + err.message;
+        }
+      }
+
+      async function predictImage(img, predDiv) {
+        if (!currentModel) {
+          predDiv.textContent = "Model: (no trained model)";
+          return;
+        }
+
+        predDiv.textContent = "Model: computing...";
+
+        const t = tf.browser.fromPixels(img).toFloat().div(255);
+        const resized = tf.image.resizeBilinear(t, [INPUT_HEIGHT, INPUT_WIDTH]);
+        const input = resized.expandDims(0);
+
+        const logits = currentModel.predict(input);
+        const probs = await logits.data();
+
+        const pOther = probs[0];
+        const pFood = probs[1];
+
+        predDiv.textContent = `Model: food ${pFood.toFixed(
+          2
+        )}, other ${pOther.toFixed(2)}`;
+
+        t.dispose();
+        resized.dispose();
+        input.dispose();
+        logits.dispose();
+      }
+
+      async function updatePredictionsForCurrentUnclassified() {
+        if (!currentModel) return;
+        const items = unclassifiedList.querySelectorAll(".image-item");
+        for (const item of items) {
+          const img = item.querySelector("img");
+          const pred = item.querySelector(".prediction");
+          if (img && pred) {
+            await predictImage(img, pred);
+          }
+        }
+      }
+
+      // ===== 模型保存 / 載入（IndexedDB）=====
+      const MODEL_STORAGE_KEY = "indexeddb://food-other-model-v1";
+
+      async function saveModel() {
+        if (!currentModel) {
+          trainStatus.textContent = "No model to save.";
+          return;
+        }
+        try {
+          trainStatus.textContent = "Saving model to IndexedDB...";
+          await currentModel.save(MODEL_STORAGE_KEY);
+          trainStatus.textContent = "Model saved to IndexedDB.";
+        } catch (err) {
+          console.error(err);
+          trainStatus.textContent = "Save error: " + err.message;
+        }
+      }
+
+      async function loadModel() {
+        try {
+          trainStatus.textContent = "Loading model from IndexedDB...";
+          currentModel = await tf.loadLayersModel(MODEL_STORAGE_KEY);
+          trainStatus.textContent = "Model loaded from IndexedDB.";
+          // 載入後立即更新當前頁面的預測
+          await updatePredictionsForCurrentUnclassified();
+        } catch (err) {
+          console.error(err);
+          trainStatus.textContent =
+            "Load error: " + (err.message || "no saved model");
+        }
+      }
+
+      // 初始化
+      setupCorrectButtons();
+      loadUnclassified();
+      loadClassified();
+    </script>
+  </body>
+</html>
