@@ -27,15 +27,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LucaXJX/DAE-IT-Assignment-3-1.git"
+    "url": "git+https://github.com/LucaXJX/DAE-IT-Assignment-3-2.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1/issues"
+    "url": "https://github.com/LucaXJX/DAE-IT-Assignment-3-2/issues"
   },
-  "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-1#readme",
+  "homepage": "https://github.com/LucaXJX/DAE-IT-Assignment-3-2#readme",
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
     "better-sqlite3": "11.10.0",
