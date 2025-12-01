@@ -24,7 +24,8 @@
     "prepare:dataset": "ts-node src/prepare-dataset-for-classification.ts",
     "generate:report": "ts-node src/generate-report.ts",
     "dataset:sync": "ts-node src/sync-dataset-from-folders.ts",
-    "label:webui": "ts-node src/simple-classification-ui.ts"
+    "label:webui": "ts-node src/simple-classification-ui.ts",
+    "move:classified": "ts-node src/move-classified-images.ts"
   },
   "repository": {
     "type": "git",
