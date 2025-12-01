@@ -249,7 +249,10 @@
     <section>
       <div class="section-header">Classified</div>
       <button onclick="loadClassified()">reload</button>
-      <button onclick="moveClassifiedImages()" style="margin-left: 0.5rem; background-color: #4CAF50; color: white;">
+      <button
+        onclick="moveClassifiedImages()"
+        style="margin-left: 0.5rem; background-color: #4caf50; color: white"
+      >
         複製到 classified 文件夾
       </button>
       <div id="classifiedList">(not auto loaded)</div>
@@ -588,7 +591,11 @@
       }
 
       async function moveClassifiedImages() {
-        if (!confirm("確定要將所有已分類的圖片複製到 dataset/classified/ 文件夾嗎？\n\n這會：\n1. 複製圖片文件到新位置（原文件保留）\n2. 更新資料庫中的路徑\n3. 可能需要一些時間")) {
+        if (
+          !confirm(
+            "確定要將所有已分類的圖片複製到 images/classified/ 文件夾嗎？\n\n這會：\n1. 複製圖片文件到新位置（原文件保留）\n2. 更新資料庫中的路徑\n3. 可能需要一些時間"
+          )
+        ) {
           return;
         }
 
@@ -598,7 +605,7 @@
         resultDiv.style.padding = "0.5rem";
         resultDiv.style.backgroundColor = "#f0f0f0";
         resultDiv.style.borderRadius = "4px";
-        
+
         const section = document.querySelector("section:has(#classifiedList)");
         if (section) {
           section.appendChild(resultDiv);
@@ -611,16 +618,17 @@
           });
 
           const json = await res.json();
-          
+
           if (json.error) {
             resultDiv.textContent = `錯誤: ${json.error}`;
             resultDiv.style.backgroundColor = "#ffebee";
             resultDiv.style.color = "#c62828";
           } else {
-            resultDiv.textContent = json.message || "移動完成！請查看終端輸出了解詳情。";
+            resultDiv.textContent =
+              json.message || "移動完成！請查看終端輸出了解詳情。";
             resultDiv.style.backgroundColor = "#e8f5e9";
             resultDiv.style.color = "#2e7d32";
-            
+
             // 3秒後自動重新載入分類列表
             setTimeout(() => {
               loadClassified();
