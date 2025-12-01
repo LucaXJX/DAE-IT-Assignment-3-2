@@ -1,10 +1,10 @@
 /**
- * 將已分類的圖片複製到 dataset/classified/ 文件夾
+ * 將已分類的圖片複製到 images/classified/ 文件夾
  * 
  * 功能：
  * 1. 查詢所有已標註為 food/other 的圖片
- * 2. 在 dataset/classified/ 下創建 food/ 和 other/ 文件夾
- * 3. 將圖片從原位置複製到 dataset/classified/{label}/{folder_name}/{file_name}
+ * 2. 在 images/classified/ 下創建 food/ 和 other/ 文件夾
+ * 3. 將圖片從原位置複製到 images/classified/{label}/{folder_name}/{file_name}
  * 4. 更新資料庫中的 folder_name 為 classified/{label}
  * 
  * 注意：原圖片會保留在原位置，不會被刪除
@@ -15,7 +15,8 @@ import fs from "fs";
 import { db } from "./db";
 
 const DATASET_DIR = path.resolve(__dirname, "../dataset");
-const CLASSIFIED_DIR = path.join(DATASET_DIR, "classified");
+const IMAGES_DIR = path.resolve(__dirname, "../images");
+const CLASSIFIED_DIR = path.join(IMAGES_DIR, "classified");
 const FOOD_DIR = path.join(CLASSIFIED_DIR, "food");
 const OTHER_DIR = path.join(CLASSIFIED_DIR, "other");
 
@@ -109,7 +110,7 @@ function main() {
       // 原文件路徑：dataset/{folder_name}/{file_name}
       const srcPath = path.join(DATASET_DIR, row.folder_name, row.file_name);
       
-      // 新文件路徑：dataset/classified/{label}/{folder_name}/{file_name}
+      // 新文件路徑：images/classified/{label}/{folder_name}/{file_name}
       // 保持原 folder_name（國家）作為子目錄，方便組織
       const destPath = path.join(CLASSIFIED_DIR, label, row.folder_name, row.file_name);
 
